@@ -1,5 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
 export interface ChatMessage {
   role: 'user' | 'assistant';
   parts: { text: string }[];
@@ -83,28 +81,32 @@ ${premiumContext}
 ${memoryContext}`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [
-        ...history.map(m => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: m.parts
-        })),
-        { role: 'user', parts: [{ text: prompt }] }
-      ],
-      config: {
-        systemInstruction,
-        temperature: 0.8,
-        tools: [{ googleSearch: {} }],
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        prompt,
+        history: [
+          ...history.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: m.parts
+          })),
+          { role: 'user', parts: [{ text: prompt }] }
+        ],
+        systemInstruction,
+        model: modelName
+      }),
     });
 
-    if (!response || !response.text) {
-      throw new Error("No response from Gemini");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Error calling Gemini API");
     }
 
-    return response.text;
+    const data = await response.json();
+    return data.text;
   } catch (error: any) {
     console.error(`Error calling Gemini API:`, error);
     if (error.message?.includes('API key not valid')) {

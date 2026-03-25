@@ -166,7 +166,8 @@ app.get("/api/health", (req, res) => {
       webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
       supabase: !!process.env.VITE_SUPABASE_URL,
       serviceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      priceId: !!process.env.VITE_STRIPE_PRICE_ID_PREMIUM
+      priceId: !!process.env.VITE_STRIPE_PRICE_ID_PREMIUM,
+      gemini: !!process.env.GEMINI_API_KEY
     }
   });
 });
@@ -341,6 +342,42 @@ app.post("/api/usage/increment", async (req, res) => {
   } catch (err: any) {
     console.error("Usage increment error:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/gemini", async (req, res) => {
+  const { prompt, history, systemInstruction, model, responseMimeType } = req.body;
+  
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "GEMINI_API_KEY is missing in server environment." });
+  }
+
+  try {
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const config: any = {
+      systemInstruction,
+      temperature: 0.8,
+    };
+
+    if (responseMimeType) {
+      config.responseMimeType = responseMimeType;
+    } else {
+      config.tools = [{ googleSearch: {} }];
+    }
+
+    const response = await ai.models.generateContent({
+      model: model || "gemini-3-flash-preview",
+      contents: history || [{ role: 'user', parts: [{ text: prompt }] }],
+      config,
+    });
+
+    res.json({ text: response.text });
+  } catch (error: any) {
+    console.error("Gemini API Error:", error);
+    res.status(500).json({ error: error.message || "Error calling Gemini API" });
   }
 });
 

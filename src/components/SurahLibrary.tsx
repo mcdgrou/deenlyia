@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book, Search, X, Sparkles, Loader2, Info, BookOpen, ChevronRight, ChevronLeft, Play, Pause, Volume2, Book as BookIcon, Heart, Share2, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { GoogleGenAI } from "@google/genai";
 import { getSurah, type QuranAyah } from '../services/quranService';
 import { favoriteService } from '../services/favoriteService';
 import type { Session } from '@supabase/supabase-js';
@@ -517,29 +516,38 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
 
     setIsLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Proporciona detalles profundos sobre la Sura ${surah.number} (${surah.name}) del Corán en ${language}. 
-        Incluye:
-        1. Significado detallado del nombre.
-        2. Contexto histórico de la revelación (Asbab al-Nuzul).
-        3. Temas clave tratados en la Sura.
-        4. Importancia espiritual o beneficios mencionados en la tradición.
-        
-        Responde en formato JSON con la siguiente estructura:
-        {
-          "meaning": "...",
-          "context": "...",
-          "keyThemes": ["tema1", "tema2", ...],
-          "historicalSignificance": "..."
-        }`,
-        config: {
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: `Proporciona detalles profundos sobre la Sura ${surah.number} (${surah.name}) del Corán en ${language}. 
+          Incluye:
+          1. Significado detallado del nombre.
+          2. Contexto histórico de la revelación (Asbab al-Nuzul).
+          3. Temas clave tratados en la Sura.
+          4. Importancia espiritual o beneficios mencionados en la tradición.
+          
+          Responde en formato JSON con la siguiente estructura:
+          {
+            "meaning": "...",
+            "context": "...",
+            "keyThemes": ["tema1", "tema2", ...],
+            "historicalSignificance": "..."
+          }`,
+          model: "gemini-3-flash-preview",
           responseMimeType: "application/json"
-        }
+        }),
       });
 
-      const details = JSON.parse(response.text || '{}');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Error calling Gemini API");
+      }
+
+      const data = await response.json();
+      const details = JSON.parse(data.text || '{}');
       const surahWithDetails = {
         ...surah,
         ...details
