@@ -462,6 +462,12 @@ export default function App() {
     'Español': {
       welcomeBrother: '¡As-salamu alaykum! Bienvenido de nuevo, hermano. ¿En qué puedo ayudarte hoy?',
       welcomeSister: '¡As-salamu alaykum! Bienvenida de nuevo, hermana. ¿En qué puedo ayudarte hoy?',
+      goodMorningBrother: '¡Buenos días, hermano! ¿En qué puedo ayudarte hoy?',
+      goodMorningSister: '¡Buenos días, hermana! ¿En qué puedo ayudarte hoy?',
+      goodAfternoonBrother: '¡Buenas tardes, hermano! ¿En qué puedo ayudarte hoy?',
+      goodAfternoonSister: '¡Buenas tardes, hermana! ¿En qué puedo ayudarte hoy?',
+      goodNightBrother: '¡Buenas noches, hermano! ¿En qué puedo ayudarte hoy?',
+      goodNightSister: '¡Buenas noches, hermana! ¿En qué puedo ayudarte hoy?',
       error: 'Lo siento, ha ocurrido un error al procesar tu solicitud. Por favor, inténtalo de nuevo.',
       newChat: 'Nueva conversación',
       placeholder: 'Pregunta sobre el Islam...',
@@ -1407,7 +1413,27 @@ export default function App() {
 
   const getWelcomeMessage = () => {
     const gender = session?.user?.user_metadata?.settings?.gender || session?.user?.user_metadata?.onboarding?.gender || 'Hermano';
-    return gender === 'Hermana' ? t.welcomeSister : t.welcomeBrother;
+    const hour = new Date().getHours();
+    const isSister = gender === 'Hermana';
+    
+    // Determine time of day
+    let timeOfDay: 'morning' | 'afternoon' | 'night';
+    if (hour >= 5 && hour < 12) {
+      timeOfDay = 'morning';
+    } else if (hour >= 12 && hour < 20) {
+      timeOfDay = 'afternoon';
+    } else {
+      timeOfDay = 'night';
+    }
+
+    // Return specific greeting if in Spanish, otherwise fallback to standard welcome
+    if (language === 'Español') {
+      if (timeOfDay === 'morning') return isSister ? t.goodMorningSister : t.goodMorningBrother;
+      if (timeOfDay === 'afternoon') return isSister ? t.goodAfternoonSister : t.goodAfternoonBrother;
+      return isSister ? t.goodNightSister : t.goodNightBrother;
+    }
+
+    return isSister ? t.welcomeSister : t.welcomeBrother;
   };
 
   const createInitialChat = async () => {
