@@ -1,3 +1,5 @@
+import { GoogleGenAI } from "@google/genai";
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   parts: { text: string }[];
@@ -81,37 +83,48 @@ ${premiumContext}
 ${memoryContext}`;
 
   try {
-    const response = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        history: [
-          ...history.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: m.parts
-          })),
-          { role: 'user', parts: [{ text: prompt }] }
-        ],
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("Gemini API key is not available. Please ensure it is configured in AI Studio.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const contents = [
+      ...history.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: m.parts
+      })),
+      { role: 'user', parts: [{ text: prompt }] }
+    ];
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: contents,
+      config: {
         systemInstruction,
-        model: modelName
-      }),
+        temperature: 0.8,
+      },
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || "Error calling Gemini API");
+    if (!response || !response.text) {
+      throw new Error("No se recibió respuesta de Deenly.");
     }
 
-    const data = await response.json();
-    return data.text;
+    return response.text;
   } catch (error: any) {
     console.error(`Error calling Gemini API:`, error);
-    if (error.message?.includes('API key not valid')) {
-      throw new Error("La clave de API de Gemini no es válida. Por favor, verifica la configuración.");
+    
+    let userMessage = "Error al comunicarse con Deenly. Por favor, inténtalo de nuevo en unos momentos.";
+    
+    if (error.message) {
+      if (error.message.includes('API key not valid')) {
+        userMessage = "La clave de API de Gemini no es válida. Por favor, verifica la configuración en AI Studio.";
+      } else {
+        userMessage = `Error de Deenly: ${error.message}`;
+      }
     }
-    throw new Error("Error al comunicarse con Deenly. Por favor, inténtalo de nuevo en unos momentos.");
+    
+    throw new Error(userMessage);
   }
 };

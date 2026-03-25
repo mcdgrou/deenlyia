@@ -516,38 +516,44 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
 
     setIsLoading(true);
     try {
-      const response = await fetch('/api/gemini', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: `Proporciona detalles profundos sobre la Sura ${surah.number} (${surah.name}) del Corán en ${language}. 
-          Incluye:
-          1. Significado detallado del nombre.
-          2. Contexto histórico de la revelación (Asbab al-Nuzul).
-          3. Temas clave tratados en la Sura.
-          4. Importancia espiritual o beneficios mencionados en la tradición.
-          
-          Responde en formato JSON con la siguiente estructura:
-          {
-            "meaning": "...",
-            "context": "...",
-            "keyThemes": ["tema1", "tema2", ...],
-            "historicalSignificance": "..."
-          }`,
-          model: "gemini-3-flash-preview",
-          responseMimeType: "application/json"
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Error calling Gemini API");
+      const { GoogleGenAI, Type } = await import("@google/genai");
+      const apiKey = process.env.GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error("Gemini API key is not available.");
       }
 
-      const data = await response.json();
-      const details = JSON.parse(data.text || '{}');
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `Proporciona detalles profundos sobre la Sura ${surah.number} (${surah.name}) del Corán en ${language}. 
+      Incluye:
+      1. Significado detallado del nombre.
+      2. Contexto histórico de la revelación (Asbab al-Nuzul).
+      3. Temas clave tratados en la Sura.
+      4. Importancia espiritual o beneficios mencionados en la tradición.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              meaning: { type: Type.STRING },
+              context: { type: Type.STRING },
+              keyThemes: { type: Type.ARRAY, items: { type: Type.STRING } },
+              historicalSignificance: { type: Type.STRING }
+            },
+            required: ["meaning", "context", "keyThemes", "historicalSignificance"]
+          }
+        }
+      });
+
+      if (!response || !response.text) {
+        throw new Error("No se recibió respuesta de Gemini.");
+      }
+
+      const details = JSON.parse(response.text);
       const surahWithDetails = {
         ...surah,
         ...details
@@ -563,10 +569,10 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
         }
         return prev;
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching surah details:", error);
       // We still have the basic info, so just show a toast
-      if (showToast) showToast("No se pudieron cargar los detalles adicionales", "error");
+      if (showToast) showToast(error.message || "No se pudieron cargar los detalles adicionales", "error");
     } finally {
       setIsLoading(false);
     }

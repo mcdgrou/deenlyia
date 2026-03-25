@@ -159,6 +159,10 @@ app.post("/api/webhook", async (req, res) => {
 
 // API Routes
 app.get("/api/health", (req, res) => {
+  const foundKeys = Object.keys(process.env).filter(k => 
+    k.includes("API") || k.includes("KEY") || k.includes("GEMINI") || k.includes("DEENLY") || k.includes("STRIPE") || k.includes("SUPABASE")
+  );
+  
   res.json({ 
     status: "ok", 
     env: {
@@ -167,7 +171,8 @@ app.get("/api/health", (req, res) => {
       supabase: !!process.env.VITE_SUPABASE_URL,
       serviceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
       priceId: !!process.env.VITE_STRIPE_PRICE_ID_PREMIUM,
-      gemini: !!process.env.GEMINI_API_KEY
+      gemini: !!(process.env.CLAVE_API_DE_DEENLY || process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY),
+      foundKeys: foundKeys
     }
   });
 });
@@ -345,42 +350,6 @@ app.post("/api/usage/increment", async (req, res) => {
   }
 });
 
-app.post("/api/gemini", async (req, res) => {
-  const { prompt, history, systemInstruction, model, responseMimeType } = req.body;
-  
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: "GEMINI_API_KEY is missing in server environment." });
-  }
-
-  try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey });
-    
-    const config: any = {
-      systemInstruction,
-      temperature: 0.8,
-    };
-
-    if (responseMimeType) {
-      config.responseMimeType = responseMimeType;
-    } else {
-      config.tools = [{ googleSearch: {} }];
-    }
-
-    const response = await ai.models.generateContent({
-      model: model || "gemini-3-flash-preview",
-      contents: history || [{ role: 'user', parts: [{ text: prompt }] }],
-      config,
-    });
-
-    res.json({ text: response.text });
-  } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({ error: error.message || "Error calling Gemini API" });
-  }
-});
-
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("GLOBAL ERROR:", err);
@@ -392,8 +361,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 async function startApp() {
   const isDev = process.env.NODE_ENV !== "production";
-  const isVercel = process.env.VERCEL === "1";
-  const isNetlify = process.env.NETLIFY === "true";
+  const isVercel = !!process.env.VERCEL;
+  const isNetlify = !!process.env.NETLIFY || !!process.env.URL;
   
   if (isDev) {
     console.log("Initializing Vite middleware...");
