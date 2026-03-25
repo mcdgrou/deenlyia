@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Inter:wght@100..900&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", serif;
+  --font-display: "Playfair Display", serif;
+  --font-quran: "Amiri", serif;
+  
+  --color-deenly-gold: #C5A059;
+  --color-deenly-gold-light: #D4B67C;
+  --color-deenly-green: #1F4D2E;
+  --color-deenly-green-dark: #163821;
+  --color-deenly-cream: #F5F2ED;
+  --color-deenly-white: #FFFFFF;
+
+  /* Dark Mode Colors */
+  --color-deenly-dark-bg: #0A0A0A;
+  --color-deenly-dark-surface: #141414;
+  --color-deenly-dark-border: #262626;
+  --color-deenly-dark-text: #E5E5E5;
+  
+  --shadow-premium: 0 20px 50px rgba(0, 0, 0, 0.1);
+  --shadow-inner-soft: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Premium Themes */
+:root.theme-emerald {
+  --color-deenly-green: #064e3b;
+  --color-deenly-green-dark: #064e3b;
+  --color-deenly-gold: #10b981;
+  --color-deenly-gold-light: #34d399;
+}
+
+:root.theme-midnight {
+  --color-deenly-green: #1e1b4b;
+  --color-deenly-green-dark: #1e1b4b;
+  --color-deenly-gold: #6366f1;
+  --color-deenly-gold-light: #818cf8;
+}
+
+:root.theme-sunset {
+  --color-deenly-green: #451a03;
+  --color-deenly-green-dark: #451a03;
+  --color-deenly-gold: #f59e0b;
+  --color-deenly-gold-light: #fbbf24;
+}
+
+@layer base {
+  body {
+    @apply bg-deenly-cream text-deenly-green font-sans antialiased selection:bg-deenly-gold/30;
+    scrollbar-gutter: stable;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-deenly-gold/20 rounded-full hover:bg-deenly-gold/40 transition-colors;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-premium;
+  }
+  
+  .glass-panel-dark {
+    @apply bg-deenly-dark-surface/80 backdrop-blur-xl border border-deenly-dark-border shadow-2xl;
+  }
+
+  .premium-button {
+    @apply relative overflow-hidden transition-colors duration-200;
+  }
+
+  .premium-card {
+    @apply transition-colors duration-200 shadow-premium;
+  }
+}
+
+.islamic-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 0l7.837 24.12h25.363L52.614 38.906l7.837 24.12L40 48.12l-20.45 14.906 7.837-24.12L2.8 24.12h25.363L40 0z' fill='%231F4D2E' fill-opacity='0.02' fill-rule='evenodd'/%3E%3C/svg%3E");
+}
+
+.markdown-body p {
+  @apply mb-5 leading-relaxed text-lg;
+}
+
+.markdown-body ul {
+  @apply list-disc pl-6 mb-5 space-y-2;
+}
+
+.markdown-body ol {
+  @apply list-decimal pl-6 mb-5 space-y-2;
+}
+
+.markdown-body blockquote {
+  @apply border-l-2 border-deenly-gold pl-6 italic my-6 bg-deenly-gold/5 py-4 pr-4 rounded-r-xl;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply font-display mb-4 mt-8 first:mt-0;
+}
+
+.markdown-body h1 { @apply text-3xl font-bold; }
+.markdown-body h2 { @apply text-2xl font-semibold; }
+.markdown-body h3 { @apply text-xl font-medium; }
+
+
+
