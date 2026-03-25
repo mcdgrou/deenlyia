@@ -165,6 +165,7 @@ app.get("/api/health", (req, res) => {
   
   res.json({ 
     status: "ok", 
+    isNetlify: !!(process.env.NETLIFY || process.env.URL),
     env: {
       stripe: !!process.env.STRIPE_SECRET_KEY,
       webhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,

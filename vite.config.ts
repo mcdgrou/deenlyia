@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      'process.env': JSON.stringify(env)
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

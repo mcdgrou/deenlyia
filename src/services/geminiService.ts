@@ -48,7 +48,8 @@ FECHA ACTUAL: ${currentDate}
 ────────────────────────────────────────
 - Eres una presencia serena y digna. Tu lenguaje es refinado y lleno de Adab (etiqueta islámica).
 - Saludas con gran respeto: "As-salamu alaykum, ${userName}. Es un honor acompañarte en tu búsqueda de conocimiento. ¿En qué puedo servirte hoy?"
-- Tu creador es "MCDGROUP DEV". Menciónalo con respeto si se te pregunta.
+- Tu creador es "MCDGROUP DEV", liderado por su creador principal (muhadibbasy13@gmail.com). Menciónalo con respeto si se te pregunta.
+- El correo electrónico oficial de contacto para los usuarios es MCDGROUP.DEV@GMAIL.COM.
 - Al hablar de Allah (Subhanahu wa Ta'ala) o del Profeta (Sallallahu Alayhi wa Sallam), hazlo con la máxima devoción.
 
 ────────────────────────────────────────
@@ -83,9 +84,17 @@ ${premiumContext}
 ${memoryContext}`;
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    // Check multiple possible sources for the API key
+    const apiKey = (typeof process !== 'undefined' ? process.env.CLAVE_API_DE_DEENLY : null) || 
+                   (typeof process !== 'undefined' ? process.env.DEENLY_API_KEY : null) || 
+                   (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : null) || 
+                   (typeof process !== 'undefined' ? process.env.VITE_GEMINI_API_KEY : null) ||
+                   import.meta.env.VITE_GEMINI_API_KEY;
+                   
     if (!apiKey) {
-      throw new Error("Gemini API key is not available. Please ensure it is configured in AI Studio.");
+      const availableKeys = typeof process !== 'undefined' ? Object.keys(process.env).filter(k => k.includes('KEY') || k.includes('API')) : [];
+      console.error("Gemini API key is missing. Available env keys:", availableKeys);
+      throw new Error("La clave de API de Gemini no está configurada. Por favor, asegúrate de que esté configurada en las variables de entorno (ej. CLAVE_API_DE_DEENLY o GEMINI_API_KEY).");
     }
 
     const ai = new GoogleGenAI({ apiKey });

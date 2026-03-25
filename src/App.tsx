@@ -498,6 +498,8 @@ export default function App() {
       aboutCommitmentDesc: 'Nuestras respuestas se basan en fuentes académicas reconocidas y el Sagrado Corán. Aunque la IA puede cometer errores, trabajamos continuamente para mejorar la precisión y fidelidad de la información proporcionada.',
       aboutUmmah: 'Hecho con ❤️ por MCDGROUP DEV para la Ummah',
       aboutRights: '© 2026 MCDGROUP DEV. Todos los derechos reservados.',
+      aboutContact: 'Contacto',
+      aboutContactDesc: 'Para soporte o consultas: MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'Planes de Deenly',
       plansSubtitle: 'Elige el plan que mejor se adapte a tu búsqueda espiritual',
       plansFree: 'Gratis',
@@ -687,6 +689,8 @@ export default function App() {
       aboutCommitmentDesc: 'Our answers are based on recognized academic sources and the Holy Quran. Although AI can make mistakes, we work continuously to improve the accuracy and fidelity of the information provided.',
       aboutUmmah: 'Made with ❤️ by MCDGROUP DEV for the Ummah',
       aboutRights: '© 2026 MCDGROUP DEV. All rights reserved.',
+      aboutContact: 'Contact',
+      aboutContactDesc: 'For support or inquiries: MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'Deenly Plans',
       plansSubtitle: 'Choose the plan that best suits your spiritual search',
       plansFree: 'Free',
@@ -876,6 +880,8 @@ export default function App() {
       aboutCommitmentDesc: 'Nos réponses sont basées sur des sources académiques reconnues et le Saint Coran. Bien que l\'IA puisse faire des erreurs, nous travaillons continuellement à améliorer la précision et la fidélité des informations fournies.',
       aboutUmmah: 'Fait avec ❤️ par MCDGROUP DEV pour la Ummah',
       aboutRights: '© 2026 MCDGROUP DEV. Tous droits réservés.',
+      aboutContact: 'Contact',
+      aboutContactDesc: 'Pour toute assistance ou demande : MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'Plans Deenly',
       plansSubtitle: 'Choisissez le plan qui convient le mieux à votre recherche spirituelle',
       plansFree: 'Gratuit',
@@ -984,6 +990,8 @@ export default function App() {
       aboutCommitmentDesc: 'تستند إجاباتنا إلى مصادر أكاديمية معترف بها والقرآن الكريم. على الرغم من أن الذكاء الاصطناعي يمكن أن يرتكب أخطاء، إلا أننا نعمل باستمرار لتحسين دقة وموثوقية المعلومات المقدمة.',
       aboutUmmah: 'صنع بـ ❤️ بواسطة MCDGROUP DEV للأمة',
       aboutRights: '© 2026 MCDGROUP DEV. جميع الحقوق محفوظة.',
+      aboutContact: 'اتصل بنا',
+      aboutContactDesc: 'للدعم أو الاستفسارات: MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'خطط Deenly',
       plansSubtitle: 'اختر الخطة التي تناسب بحثك الروحي بشكل أفضل',
       plansFree: 'مجاني',
@@ -1092,6 +1100,8 @@ export default function App() {
       aboutCommitmentDesc: 'Jawaban kami didasarkan pada sumber akademik yang diakui dan Al-Quran Suci. Meskipun AI dapat membuat kesalahan, kami bekerja terus menerus untuk meningkatkan akurasi dan kesetiaan informasi yang diberikan.',
       aboutUmmah: 'Dibuat dengan ❤️ oleh MCDGROUP DEV untuk Ummah',
       aboutRights: '© 2026 MCDGROUP DEV. Hak cipta dilindungi undang-undang.',
+      aboutContact: 'Kontak',
+      aboutContactDesc: 'Untuk dukungan atau pertanyaan: MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'Paket Deenly',
       plansSubtitle: 'Pilih paket yang paling sesuai dengan pencarian spiritual Anda',
       plansFree: 'Gratis',
@@ -1200,6 +1210,8 @@ export default function App() {
       aboutCommitmentDesc: 'Unsere Antworten basieren auf anerkannten akademischen Quellen und dem Heiligen Koran. Obwohl KI Fehler machen kann, arbeiten wir kontinuierlich daran, die Genauigkeit und Treue der bereitgestellten Informationen zu verbessern.',
       aboutUmmah: 'Mit ❤️ von MCDGROUP DEV für die Ummah gemacht',
       aboutRights: '© 2026 MCDGROUP DEV. Alle Rechte vorbehalten.',
+      aboutContact: 'Kontakt',
+      aboutContactDesc: 'Für Support oder Anfragen: MCDGROUP.DEV@GMAIL.COM',
       plansTitle: 'Deenly Pläne',
       plansSubtitle: 'Wählen Sie den Plan, der am besten zu Ihrer spirituellen Suche passt',
       plansFree: 'Kostenlos',
@@ -1674,6 +1686,7 @@ export default function App() {
     try {
       // Save user message to DB
       const dbUserMsg = await chatService.addMessage(activeSessionId, 'user', input);
+      if (!dbUserMsg) throw new Error("No se pudo guardar el mensaje del usuario en la base de datos.");
       
       const history: GeminiChatMessage[] = updatedMessages.slice(-6).map(m => ({
         role: m.role,
@@ -1696,6 +1709,7 @@ export default function App() {
       
       // Save model response to DB
       const dbModelMsg = await chatService.addMessage(activeSessionId, 'assistant', response);
+      if (!dbModelMsg) throw new Error("No se pudo guardar la respuesta en la base de datos.");
 
       const modelMessage: Message = {
         id: dbModelMsg.id,
