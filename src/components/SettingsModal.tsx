@@ -18,6 +18,12 @@ interface SettingsModalProps {
   onNavigate?: (modalName: string) => void;
   darkMode: boolean;
   setDarkMode: (val: boolean) => void;
+  fontSize: 'small' | 'medium' | 'large';
+  setFontSize: (val: 'small' | 'medium' | 'large') => void;
+  theme: 'default' | 'emerald' | 'midnight' | 'sunset';
+  setTheme: (val: 'default' | 'emerald' | 'midnight' | 'sunset') => void;
+  cardStyle: 'compact' | 'wide';
+  setCardStyle: (val: 'compact' | 'wide') => void;
   isPremium: boolean;
   session: Session | null;
   onOpenLegal: (type: 'privacy' | 'terms' | 'premium') => void;
@@ -123,15 +129,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onNavigate,
   darkMode, 
   setDarkMode,
+  fontSize,
+  setFontSize,
+  theme,
+  setTheme,
+  cardStyle,
+  setCardStyle,
   isPremium,
   session,
   onOpenLegal,
   showToast
 }) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('medium');
-  const [theme, setTheme] = useState<'default' | 'emerald' | 'midnight' | 'sunset'>('default');
-  const [cardStyle, setCardStyle] = useState<'compact' | 'wide'>('wide');
   const [notifications, setNotifications] = useState(true);
   const [islamicReminders, setIslamicReminders] = useState(true);
   const [quranTranslation, setQuranTranslation] = useState('Español');
@@ -966,26 +975,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   darkMode={darkMode}
                 />
 
-                {isPremium && (
-                  <SettingItem 
-                    icon={Sparkles} 
-                    label={t.theme} 
-                    description={t.exclusiveThemes}
-                    type="select"
-                    value={theme}
-                    options={[
-                      { id: 'default', name: t.themeDefault },
-                      { id: 'emerald', name: t.themeEmerald },
-                      { id: 'midnight', name: t.themeMidnight },
-                      { id: 'sunset', name: t.themeSunset }
-                    ]}
-                    onClick={(val) => {
-                      setTheme(val);
-                      saveSettings({ theme: val });
-                    }}
-                    darkMode={darkMode}
-                  />
-                )}
+                <SettingItem 
+                  icon={Sparkles} 
+                  label={t.theme} 
+                  description={!isPremium ? t.exclusiveThemes : undefined}
+                  type="select"
+                  value={theme}
+                  options={[
+                    { id: 'default', name: t.themeDefault },
+                    { id: 'emerald', name: t.themeEmerald + (!isPremium ? ' 🔒' : '') },
+                    { id: 'midnight', name: t.themeMidnight + (!isPremium ? ' 🔒' : '') },
+                    { id: 'sunset', name: t.themeSunset + (!isPremium ? ' 🔒' : '') }
+                  ]}
+                  onClick={(val) => {
+                    if (!isPremium && val !== 'default') {
+                      if (showToast) showToast(language === 'Español' ? 'Esta función es exclusiva para usuarios Premium' : 'This feature is exclusive for Premium users', 'error');
+                      if (onNavigate) onNavigate('plans');
+                      return;
+                    }
+                    setTheme(val);
+                    saveSettings({ theme: val });
+                  }}
+                  darkMode={darkMode}
+                />
               </SettingSection>
 
               {/* Idioma y Región */}

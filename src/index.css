@@ -46,6 +46,32 @@
   --color-deenly-gold-light: #fbbf24;
 }
 
+/* Font Sizes */
+:root.font-size-small {
+  font-size: 14px;
+}
+
+:root.font-size-medium {
+  font-size: 16px;
+}
+
+:root.font-size-large {
+  font-size: 18px;
+}
+
+/* Card Styles */
+.card-style-compact .premium-card,
+.card-style-compact .glass-panel,
+.card-style-compact .glass-panel-dark {
+  @apply p-3 rounded-2xl;
+}
+
+.card-style-wide .premium-card,
+.card-style-wide .glass-panel,
+.card-style-wide .glass-panel-dark {
+  @apply p-6 rounded-[32px];
+}
+
 @layer base {
   body {
     @apply bg-deenly-cream text-deenly-green font-sans antialiased selection:bg-deenly-gold/30;

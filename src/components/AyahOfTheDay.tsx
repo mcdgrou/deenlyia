@@ -70,7 +70,7 @@ const AyahOfTheDay: React.FC<AyahOfTheDayProps> = ({ darkMode, language, t }) =>
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className={`relative overflow-hidden p-6 sm:p-8 rounded-[32px] sm:rounded-[40px] border border-deenly-gold/10 shadow-xl ${
+      className={`relative overflow-hidden p-6 sm:p-8 rounded-[32px] sm:rounded-[40px] border border-deenly-gold/10 shadow-xl premium-card ${
         darkMode ? 'bg-deenly-dark-surface/50' : 'bg-white'
       }`}
     >

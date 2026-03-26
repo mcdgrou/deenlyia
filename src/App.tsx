@@ -11,6 +11,7 @@ import {
   Settings, 
   Sparkles, 
   ChevronRight,
+  ChevronDown,
   MessageSquare,
   BookOpen,
   Loader2,
@@ -183,6 +184,15 @@ export default function App() {
   });
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setIsAtBottom(atBottom);
+  };
 
   useEffect(() => {
     // Check for success/cancel from Stripe
@@ -387,6 +397,18 @@ export default function App() {
       root.classList.add(`theme-${theme}`);
     }
   }, [theme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('font-size-small', 'font-size-medium', 'font-size-large');
+    root.classList.add(`font-size-${fontSize}`);
+  }, [fontSize]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('card-style-compact', 'card-style-wide');
+    root.classList.add(`card-style-${cardStyle}`);
+  }, [cardStyle]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -1608,7 +1630,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isAtBottom || messages[messages.length - 1]?.role === 'user') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, isLoading]);
 
   const handleSend = async () => {
@@ -1918,7 +1942,11 @@ export default function App() {
 
       <main className="flex-1 flex flex-col max-w-4xl mx-auto w-full relative overflow-hidden h-[calc(100vh-64px)]">
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide pb-4">
+        <div 
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide pb-4 scroll-smooth"
+        >
           <AnimatePresence initial={false}>
             {messages.map((message) => (
               <motion.div
@@ -1930,7 +1958,7 @@ export default function App() {
               >
                 <div className={`${
                   cardStyle === 'compact' ? 'max-w-[85%] sm:max-w-[70%]' : 'max-w-[95%] sm:max-w-[85%]'
-                } p-4 rounded-2xl shadow-sm relative group ${
+                } p-4 rounded-2xl shadow-sm relative group premium-card ${
                   message.role === 'user' 
                     ? 'bg-gradient-to-br from-deenly-gold to-deenly-gold/80 text-white rounded-tr-none' 
                     : darkMode 
@@ -2034,6 +2062,23 @@ export default function App() {
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Scroll to Bottom Button */}
+        <AnimatePresence>
+          {!isAtBottom && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              className={`absolute bottom-24 right-6 p-3 rounded-full shadow-lg z-30 transition-colors ${
+                darkMode ? 'bg-deenly-dark-surface text-deenly-gold border border-deenly-gold/20' : 'bg-white text-deenly-gold border border-deenly-gold/10'
+              }`}
+            >
+              <ChevronDown size={20} />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Input Area */}
         <div className={`p-4 pb-6 sm:pb-8 ${darkMode ? 'bg-deenly-dark-bg' : 'bg-deenly-cream'} border-t border-deenly-gold/5`}>
@@ -2401,6 +2446,12 @@ export default function App() {
         onNavigate={openModal}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
+        fontSize={fontSize}
+        setFontSize={setFontSize}
+        theme={theme}
+        setTheme={setTheme}
+        cardStyle={cardStyle}
+        setCardStyle={setCardStyle}
         isPremium={isPremium}
         session={session}
         onOpenLegal={openLegalModal}

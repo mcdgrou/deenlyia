@@ -665,7 +665,7 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
                       setViewMode('info');
                       fetchSurahDetails(surah);
                     }}
-                    className={`flex-shrink-0 w-[240px] md:w-full p-4 rounded-2xl flex items-center gap-4 transition-colors group snap-center mx-1 md:mx-0 ${
+                    className={`flex-shrink-0 w-[240px] md:w-full p-4 rounded-2xl flex items-center gap-4 transition-colors group snap-center mx-1 md:mx-0 premium-card ${
                       selectedSurah?.number === surah.number
                         ? 'bg-deenly-gold text-white shadow-lg shadow-deenly-gold/20'
                         : darkMode ? 'hover:bg-deenly-gold/10 text-deenly-dark-text bg-deenly-dark-surface/50' : 'hover:bg-deenly-gold/5 text-deenly-green bg-white/50'
