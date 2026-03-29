@@ -145,6 +145,8 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   const [legalModalType, setLegalModalType] = useState<'privacy' | 'terms' | 'premium'>('privacy');
   
   const openModal = (modalName: string) => {
@@ -464,6 +466,14 @@ export default function App() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Check if iOS
+    const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(isIOSDevice);
+
+    // Check if already in standalone mode
+    const isStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    setIsStandalone(isStandaloneMode);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -2305,6 +2315,22 @@ export default function App() {
                       <Download size={18} />
                       <span className="text-sm font-bold">{language === 'Español' ? 'Instalar Deenly' : 'Install Deenly'}</span>
                     </button>
+                  )}
+
+                  {isIOS && !isStandalone && (
+                    <div className={`p-4 rounded-2xl bg-deenly-gold/5 border border-deenly-gold/10 text-deenly-gold`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Download size={16} />
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                          {language === 'Español' ? 'Instalar en iPhone' : 'Install on iPhone'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] leading-relaxed opacity-80">
+                        {language === 'Español' 
+                          ? 'Toca el botón "Compartir" en Safari y selecciona "Añadir a la pantalla de inicio".' 
+                          : 'Tap the "Share" button in Safari and select "Add to Home Screen".'}
+                      </p>
+                    </div>
                   )}
 
                   <button 
