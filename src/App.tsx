@@ -135,6 +135,7 @@ const Splash = () => (
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -202,7 +203,7 @@ export default function App() {
     if (query.get('success')) {
       showToast(language === 'Español' ? '¡Suscripción activada con éxito!' : 'Subscription activated successfully!', 'success');
       // Refresh session to get updated metadata
-      supabase.auth.refreshSession();
+      supabase.auth.refreshSession().catch(err => console.error('Error refreshing session:', err));
     }
     if (query.get('canceled')) {
       showToast(language === 'Español' ? 'El proceso de pago fue cancelado.' : 'Payment process was canceled.', 'error');
@@ -264,16 +265,23 @@ export default function App() {
       .subscribe();
 
     // Also fetch once to be sure
-    supabase
-      .from('profiles')
-      .select('is_premium')
-      .eq('id', session.user.id)
-      .single()
-      .then(({ data }) => {
+    const fetchPremiumStatus = async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('is_premium')
+          .eq('id', session.user.id)
+          .single();
+        
         if (data) {
           setIsPremium(data.is_premium);
         }
-      });
+      } catch (err) {
+        console.error('Error fetching premium status:', err);
+      }
+    };
+
+    fetchPremiumStatus();
 
     return () => {
       supabase.removeChannel(channel);
@@ -296,51 +304,57 @@ export default function App() {
   }, [session?.user?.id]);
 
   const updateStats = (key: keyof typeof achievementsStats, increment = 1) => {
-    setAchievementsStats(prev => {
-      const newStats = { ...prev, [key]: prev[key] + increment };
-      if (session?.user) {
-        localStorage.setItem(`deenly_stats_${session.user.id}`, JSON.stringify(newStats));
-        // Optionally sync to Supabase metadata
-        supabase.auth.updateUser({
-          data: { stats: newStats }
-        });
-      }
-      return newStats;
-    });
+    const newStats = { ...achievementsStats, [key]: achievementsStats[key] + increment };
+    setAchievementsStats(newStats);
+    
+    if (session?.user) {
+      localStorage.setItem(`deenly_stats_${session.user.id}`, JSON.stringify(newStats));
+      // Optionally sync to Supabase metadata
+      supabase.auth.updateUser({
+        data: { stats: newStats }
+      }).catch(err => console.error('Error syncing stats to Supabase:', err));
+    }
   };
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
       loadSessions();
+      setIsAuthReady(true);
       return;
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setIsAuthReady(true);
       if (session?.user) {
         const needsOnboarding = session.user.user_metadata?.needs_onboarding;
         if (needsOnboarding) {
           setShowOnboarding(true);
         }
+        
+        // Load settings from user metadata
+        if (session.user.user_metadata?.settings?.darkMode !== undefined) {
+          setDarkMode(session.user.user_metadata.settings.darkMode);
+        }
+        if (session.user.user_metadata?.settings?.fontSize) {
+          setFontSize(session.user.user_metadata.settings.fontSize);
+        }
+        if (session.user.user_metadata?.settings?.theme) {
+          setTheme(session.user.user_metadata.settings.theme);
+        }
+        if (session.user.user_metadata?.settings?.cardStyle) {
+          setCardStyle(session.user.user_metadata.settings.cardStyle);
+        }
+        if (session.user.user_metadata?.settings?.language) {
+          setLanguage(session.user.user_metadata.settings.language);
+        }
+        if (session.user.user_metadata?.settings?.dateFormat) {
+          setDateFormat(session.user.user_metadata.settings.dateFormat);
+        }
       }
-      if (session?.user?.user_metadata?.settings?.darkMode !== undefined) {
-        setDarkMode(session.user.user_metadata.settings.darkMode);
-      }
-      if (session?.user?.user_metadata?.settings?.fontSize) {
-        setFontSize(session.user.user_metadata.settings.fontSize);
-      }
-      if (session?.user?.user_metadata?.settings?.theme) {
-        setTheme(session.user.user_metadata.settings.theme);
-      }
-      if (session?.user?.user_metadata?.settings?.cardStyle) {
-        setCardStyle(session.user.user_metadata.settings.cardStyle);
-      }
-      if (session?.user?.user_metadata?.settings?.language) {
-        setLanguage(session.user.user_metadata.settings.language);
-      }
-      if (session?.user?.user_metadata?.settings?.dateFormat) {
-        setDateFormat(session.user.user_metadata.settings.dateFormat);
-      }
+    }).catch(err => {
+      console.error('Error getting session:', err);
+      setIsAuthReady(true);
     });
 
     const {
@@ -482,11 +496,15 @@ export default function App() {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setShowInstallButton(false);
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setShowInstallButton(false);
+      }
+    } catch (err) {
+      console.error('Error in PWA install:', err);
     }
   };
 
@@ -1646,6 +1664,7 @@ export default function App() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
+    console.log('handleSend called with input:', input, 'isLoading:', isLoading, 'currentSessionId:', currentSessionId);
     if (!input.trim() || isLoading || !currentSessionId) return;
 
     const activeSessionId = currentSessionId;
@@ -1702,7 +1721,11 @@ export default function App() {
     let updatedTitle = sessions.find(s => s.id === activeSessionId)?.title || 'Nueva conversación';
     if (messages.length <= 1) {
       updatedTitle = input.slice(0, 30) + (input.length > 30 ? '...' : '');
-      await chatService.updateChatTitle(activeSessionId, updatedTitle);
+      try {
+        await chatService.updateChatTitle(activeSessionId, updatedTitle);
+      } catch (error) {
+        console.error('Error updating chat title:', error);
+      }
     }
 
     setSessions(prev => prev.map(s => 
@@ -1739,7 +1762,9 @@ export default function App() {
         userMemories = memData?.map(m => m.memory_text) || [];
       }
       
+      console.log('Calling getMuftiResponse with input:', input);
       const response = await getMuftiResponse(input, history, session?.user?.user_metadata?.onboarding, isPremium, userMemories);
+      console.log('Received response from getMuftiResponse:', !!response);
       
       // Save model response to DB
       const dbModelMsg = await chatService.addMessage(activeSessionId, 'assistant', response);
@@ -1886,6 +1911,10 @@ export default function App() {
       showToast(error.message || (language === 'Español' ? 'Error al abrir el portal de gestión.' : 'Error opening management portal.'), 'error');
     }
   };
+
+  if (!isAuthReady || showSplash) {
+    return <Splash />;
+  }
 
   if (!session) {
     return <Auth darkMode={darkMode} />;
@@ -2421,7 +2450,7 @@ export default function App() {
                   <span className="text-sm font-medium">{t.about}</span>
                 </button>
                 <button 
-                  onClick={() => supabase.auth.signOut()}
+                  onClick={() => supabase.auth.signOut().catch(err => console.error('Error signing out:', err))}
                   className="w-full flex items-center gap-3 text-red-500 hover:opacity-80 transition-opacity pt-4 border-t border-deenly-gold/10"
                 >
                   <X size={18} />

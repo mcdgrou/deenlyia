@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Book, Search, X, Sparkles, Loader2, Info, BookOpen, ChevronRight, ChevronLeft, Play, Pause, Volume2, Book as BookIcon, Heart, Share2, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSurah, type QuranAyah } from '../services/quranService';
+import { getSurahDetails } from '../services/geminiService';
 import { favoriteService } from '../services/favoriteService';
 import type { Session } from '@supabase/supabase-js';
 
@@ -516,44 +517,8 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
 
     setIsLoading(true);
     try {
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const apiKey = process.env.GEMINI_API_KEY;
+      const details = await getSurahDetails(surah.number, surah.name, language);
       
-      if (!apiKey) {
-        throw new Error("Gemini API key is not available.");
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `Proporciona detalles profundos sobre la Sura ${surah.number} (${surah.name}) del Corán en ${language}. 
-      Incluye:
-      1. Significado detallado del nombre.
-      2. Contexto histórico de la revelación (Asbab al-Nuzul).
-      3. Temas clave tratados en la Sura.
-      4. Importancia espiritual o beneficios mencionados en la tradición.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              meaning: { type: Type.STRING },
-              context: { type: Type.STRING },
-              keyThemes: { type: Type.ARRAY, items: { type: Type.STRING } },
-              historicalSignificance: { type: Type.STRING }
-            },
-            required: ["meaning", "context", "keyThemes", "historicalSignificance"]
-          }
-        }
-      });
-
-      if (!response || !response.text) {
-        throw new Error("No se recibió respuesta de Gemini.");
-      }
-
-      const details = JSON.parse(response.text);
       const surahWithDetails = {
         ...surah,
         ...details
@@ -571,8 +536,18 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
       });
     } catch (error: any) {
       console.error("Error fetching surah details:", error);
+      
+      let userMessage = error.message || "No se pudieron cargar los detalles adicionales";
+      const msg = userMessage.toLowerCase();
+      
+      if (msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota')) {
+        userMessage = "Has excedido tu cuota de la API de Gemini. Por favor, espera unos minutos o verifica los límites de tu plan en Google AI Studio.";
+      } else if (msg.includes('expired') || msg.includes('api_key_invalid') || msg.includes('key not valid')) {
+        userMessage = "La clave de API de Gemini ha expirado o no es válida. Por favor, actualiza la clave en la configuración.";
+      }
+      
       // We still have the basic info, so just show a toast
-      if (showToast) showToast(error.message || "No se pudieron cargar los detalles adicionales", "error");
+      if (showToast) showToast(userMessage, "error");
     } finally {
       setIsLoading(false);
     }

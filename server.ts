@@ -44,6 +44,34 @@ const getSupabaseAdmin = () => {
 const app = express();
 const PORT = 3000;
 
+// Simple in-memory cache for chat responses to save quota
+const chatCache = new Map<string, { text: string; timestamp: number }>();
+const surahCache = new Map<number, { text: string; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const SURAH_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours for surah details
+
+// Helper for retrying with exponential backoff for 429 errors
+const withRetry = async (fn: () => Promise<any>, maxRetries = 2, initialDelay = 2000) => {
+  let lastError;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const errorMsg = (error.message || "").toLowerCase();
+      // Only retry on 429 (Quota Exceeded)
+      if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted') || errorMsg.includes('quota')) {
+        const delay = initialDelay * Math.pow(2, i);
+        console.warn(`Quota exceeded. Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+};
+
 // Basic health check
 app.get("/api/health", (req, res) => {
   res.json({ 
@@ -169,10 +197,83 @@ app.post("/api/create-checkout-session", async (req, res) => {
   }
 });
 
+app.post("/api/surah-details", async (req, res) => {
+  try {
+    const { surahNumber, surahName, language } = req.body;
+    
+    // Check cache first
+    const cached = surahCache.get(surahNumber);
+    if (cached && (Date.now() - cached.timestamp < SURAH_CACHE_TTL)) {
+      console.log(`Serving details for Surah ${surahNumber} from cache.`);
+      return res.json(JSON.parse(cached.text));
+    }
+
+    const apiKey = process.env.CLAVE_API_DE_DEENLY || 
+                   process.env.DEENLY_API_KEY || 
+                   process.env.GEMINI_API_KEY;
+                   
+    if (!apiKey) {
+      return res.status(500).json({ error: "Gemini API key is missing on server." });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Proporciona detalles profundos sobre la Sura ${surahNumber} (${surahName}) del Corán en ${language}. 
+    Incluye:
+    1. Significado detallado del nombre.
+    2. Contexto histórico de la revelación (Asbab al-Nuzul).
+    3. Temas clave tratados en la Sura.
+    4. Importancia espiritual o beneficios mencionados en la tradición.`;
+
+    const response = await withRetry(async () => {
+      return await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT" as any, // Cast to any to avoid Type enum issues in server
+            properties: {
+              meaning: { type: "STRING" },
+              context: { type: "STRING" },
+              keyThemes: { type: "ARRAY", items: { type: "STRING" } },
+              historicalSignificance: { type: "STRING" }
+            },
+            required: ["meaning", "context", "keyThemes", "historicalSignificance"]
+          }
+        }
+      });
+    });
+
+    if (!response || !response.text) {
+      throw new Error("No se recibió respuesta de Gemini.");
+    }
+
+    // Cache the response
+    surahCache.set(surahNumber, { text: response.text, timestamp: Date.now() });
+    
+    res.json(JSON.parse(response.text));
+  } catch (error: any) {
+    console.error(`Error fetching Surah details:`, error);
+    const errorMsg = (error.message || "").toLowerCase();
+    if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted') || errorMsg.includes('quota')) {
+      return res.status(429).json({ error: "Cuota excedida. Por favor, inténtalo de nuevo en un minuto." });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { prompt, history, onboarding, isPremium, memories } = req.body;
     
+    // Create a cache key based on prompt and history
+    const cacheKey = JSON.stringify({ prompt, history: history.slice(-2), isPremium });
+    const cached = chatCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      console.log("Serving response from cache to save quota.");
+      return res.json({ text: cached.text });
+    }
+
     const apiKey = process.env.CLAVE_API_DE_DEENLY || 
                    process.env.DEENLY_API_KEY || 
                    process.env.GEMINI_API_KEY;
@@ -205,51 +306,36 @@ app.post("/api/chat", async (req, res) => {
       day: 'numeric' 
     });
 
-    const systemInstruction = `Eres **Deenly**, un sabio y compasivo compañero espiritual islámico. Tu misión es guiar a tus hermanos y hermanas en su camino de fe con respeto, sabiduría y empatía, basándote siempre en fuentes auténticas.
+    const systemInstruction = `Eres Deenly, un sabio y compasivo compañero espiritual islámico. Guía a tus hermanos con respeto, sabiduría y empatía, basándote en fuentes auténticas.
         
-Tu tono debe ser el de un mentor espiritual o un hermano mayor sabio: profundamente respetuoso, calmado, inspirador y acogedor. Evita el lenguaje excesivamente informal o juvenil. Tu prioridad es el respeto sagrado por el Deen y por la persona que busca conocimiento.
+Tu tono es el de un mentor espiritual: respetuoso, calmado e inspirador. Evita lenguaje informal. Tu prioridad es el Adab (etiqueta islámica).
 
-────────────────────────────────────────
 FECHA ACTUAL: ${currentDate}
-────────────────────────────────────────
 
-────────────────────────────────────────
-1. IDENTIDAD Y RESPETO
-────────────────────────────────────────
-- Eres una presencia serena y digna. Tu lenguaje es refinado y lleno de Adab (etiqueta islámica).
-- Saludas con gran respeto: "As-salamu alaykum, ${userName}. Es un honor acompañarte en tu búsqueda de conocimiento. ¿En qué puedo servirte hoy?"
-- Tu creador es "MCDGROUP DEV", liderado por su creador principal (muhadibbasy13@gmail.com). Menciónalo con respeto si se te pregunta.
-- El correo electrónico oficial de contacto para los usuarios es MCDGROUP.DEV@GMAIL.COM.
-- Al hablar de Allah (Subhanahu wa Ta'ala) o del Profeta (Sallallahu Alayhi wa Sallam), hazlo con la máxima devoción.
+1. IDENTIDAD Y RESPETO:
+- Saluda con respeto: "As-salamu alaykum, ${userName}. Es un honor acompañarte. ¿En qué puedo servirte hoy?"
+- Creador: "MCDGROUP DEV" (muhadibbasy13@gmail.com). Contacto: MCDGROUP.DEV@GMAIL.COM.
+- Usa la máxima devoción al mencionar a Allah (SWT) o al Profeta (SAW).
 
-────────────────────────────────────────
-2. PERSONALIZACIÓN (DATOS DEL USUARIO)
-────────────────────────────────────────
+2. PERSONALIZACIÓN:
 ${onboardingInfo}
-- Usa esta información para adaptar tus explicaciones. Si es principiante, explica los términos. Si le interesa la historia, añade contexto histórico.
+- Adapta tus explicaciones según esta información.
 
-────────────────────────────────────────
-3. LÍMITES Y DESCARGO DE RESPONSABILIDAD
-────────────────────────────────────────
-- No emites fatwas. Ante dudas legales complejas, di: "Esta es una cuestión de gran profundidad. Te sugiero consultar con un imam o un erudito local que pueda analizar tu situación personal con el rigor que merece".
+3. LÍMITES:
+- No emites fatwas. Sugiere consultar imames para casos complejos.
 - No das consejos médicos ni legales.
 
-────────────────────────────────────────
-4. FUENTES, INVESTIGACIÓN Y VERACIDAD
-────────────────────────────────────────
-- **PROHIBICIÓN DE INVENTAR O FALSIFICAR**: Tienes estrictamente prohibido inventar fechas, eventos o datos históricos/religiosos. Si no tienes certeza absoluta, utiliza la herramienta de búsqueda de Google para verificar.
-- **EVENTOS ACTUALES (EID, RAMADÁN)**: Para preguntas sobre fechas actuales (como "¿Qué día es hoy?", "¿Cuándo es Eid?", "¿Cuándo termina Ramadán?"), **DEBES** investigar y verificar usando Google Search antes de responder. No asumas fechas basadas en tu conocimiento previo, ya que el calendario lunar islámico varía.
-- Básate en el Corán y Hadices auténticos (Bujari, Muslim).
-- Respeta las 4 escuelas (Hanafi, Maliki, Shafi'i, Hanbali) y explica sus diferencias con respeto.
-- Si no sabes algo, di con humildad: "Solo Allah posee el conocimiento absoluto. No dispongo de la certeza sobre este asunto y prefiero no hablar sin fundamento en el Deen".
+4. FUENTES Y VERACIDAD:
+- PROHIBIDO INVENTAR. Si no tienes certeza, usa Google Search.
+- EVENTOS ACTUALES: Investiga siempre fechas de Eid, Ramadán, etc., usando Google Search antes de responder.
+- Básate en Corán y Hadices auténticos (Bujari, Muslim). Respeta las 4 escuelas jurídicas.
+- Si no sabes algo, di con humildad que solo Allah posee el conocimiento absoluto.
 
-────────────────────────────────────────
-5. ESTRUCTURA DE RESPUESTA
-────────────────────────────────────────
-1. **Saludo respetuoso y cálido**.
-2. **Explicación clara, profunda y bien fundamentada**.
-3. **Evidencia textual (Corán/Hadiz)** citada con honor.
-4. **Reflexión espiritual final** que inspire paz y cercanía con Allah.
+5. ESTRUCTURA:
+1. Saludo cálido.
+2. Explicación profunda y fundamentada.
+3. Evidencia textual (Corán/Hadiz).
+4. Reflexión espiritual final.
 ${premiumContext}
 ${memoryContext}`;
 
@@ -261,22 +347,55 @@ ${memoryContext}`;
       { role: 'user', parts: [{ text: prompt }] }
     ];
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: contents,
-      config: {
-        systemInstruction,
-        temperature: 0.8,
-      },
+    const response = await withRetry(async () => {
+      return await ai.models.generateContent({
+        model: modelName,
+        contents: contents,
+        config: {
+          systemInstruction,
+          temperature: 0.8,
+          maxOutputTokens: 2048,
+          tools: [{ googleSearch: {} }],
+        },
+      });
     });
 
     if (!response || !response.text) {
       throw new Error("No se recibió respuesta de Gemini.");
     }
 
+    // Cache the response
+    chatCache.set(cacheKey, { text: response.text, timestamp: Date.now() });
+    
+    // Clean up old cache entries occasionally
+    if (chatCache.size > 100) {
+      const now = Date.now();
+      for (const [key, val] of chatCache.entries()) {
+        if (now - val.timestamp > CACHE_TTL) chatCache.delete(key);
+      }
+    }
+
     res.json({ text: response.text });
   } catch (error: any) {
     console.error(`Error calling Gemini API:`, error);
+    
+    // Handle specific Gemini API errors
+    const errorMsg = (error.message || error.toString() || "").toLowerCase();
+    
+    if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted') || errorMsg.includes('quota')) {
+      return res.status(429).json({ 
+        error: "Has excedido tu cuota actual de la API de Gemini. Esto suele ocurrir con las claves gratuitas tras varios mensajes seguidos. Por favor, espera 1-2 minutos antes de intentarlo de nuevo. Puedes verificar tus límites en: https://aistudio.google.com/app/plan_and_billing",
+        code: "RESOURCE_EXHAUSTED"
+      });
+    }
+
+    if (errorMsg.includes('expired') || errorMsg.includes('api_key_invalid') || errorMsg.includes('key not valid')) {
+      return res.status(400).json({
+        error: "La clave de API de Gemini ha expirado o no es válida. Por favor, actualiza la clave en la configuración del servidor.",
+        code: "API_KEY_EXPIRED"
+      });
+    }
+    
     res.status(500).json({ error: error.message });
   }
 });

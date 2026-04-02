@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, BookOpen, Sparkles, Send, History, Calendar, Heart, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import { getMuftiResponse } from '../services/geminiService';
 
 interface JournalModalProps {
   isOpen: boolean;
@@ -63,17 +64,8 @@ export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, dar
     setIsSubmitting(true);
     try {
       // 1. Get AI Reflection
-      const reflectionResponse = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `Reflexiona sobre esta entrada de diario espiritual: "${newEntry}". Proporciona una breve reflexión islámica de consuelo o motivación (máximo 3 frases).`,
-          systemInstruction: "Eres un mentor espiritual islámico compasivo. Tu objetivo es dar una breve reflexión basada en el Corán o la Sunnah para una entrada de diario."
-        })
-      });
-      
-      const reflectionData = await reflectionResponse.json();
-      const ai_reflection = reflectionData.text || "";
+      const prompt = `Reflexiona sobre esta entrada de diario espiritual: "${newEntry}". Proporciona una breve reflexión islámica de consuelo o motivación (máximo 3 frases).`;
+      const ai_reflection = await getMuftiResponse(prompt, [], null, false, []);
 
       // 2. Save to DB
       const { error } = await supabase.from('journal_entries').insert([{
