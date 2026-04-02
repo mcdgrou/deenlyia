@@ -1,22 +1,11 @@
-import { GoogleGenAI } from "@google/genai";
-
-// Initialize Gemini API
-// The platform provides process.env.GEMINI_API_KEY automatically
-const getAI = () => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  console.log('Gemini API Key present:', !!apiKey);
-  if (!apiKey) {
-    throw new Error("La clave de API de Gemini no está configurada. Por favor, revisa la configuración.");
-  }
-  return new GoogleGenAI({ apiKey });
-};
+import { supabase } from '../lib/supabase';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   parts: { text: string }[];
 }
 
-// Helper for retrying with exponential backoff for 429 errors
+// Helper for retrying with exponential backoff
 const withRetry = async (fn: () => Promise<any>, maxRetries = 2, initialDelay = 2000) => {
   let lastError;
   for (let i = 0; i < maxRetries; i++) {
@@ -25,10 +14,14 @@ const withRetry = async (fn: () => Promise<any>, maxRetries = 2, initialDelay = 
     } catch (error: any) {
       lastError = error;
       const errorMsg = (error.message || "").toLowerCase();
-      // Only retry on 429 (Quota Exceeded)
-      if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted') || errorMsg.includes('quota')) {
+      if (
+        errorMsg.includes('429') || 
+        errorMsg.includes('resource_exhausted') || 
+        errorMsg.includes('quota') ||
+        (errorMsg.includes('json') && errorMsg.includes('unexpected end'))
+      ) {
         const delay = initialDelay * Math.pow(2, i);
-        console.warn(`Cuota excedida. Reintentando en ${delay}ms... (Intento ${i + 1}/${maxRetries})`);
+        console.warn(`Error recuperable detectado (${errorMsg}). Reintentando en ${delay}ms... (Intento ${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -46,8 +39,8 @@ export const getMuftiResponse = async (
   memories: string[] = []
 ) => {
   try {
-    const ai = getAI();
-    const modelName = isPremium ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Debes iniciar sesión para usar el asistente.");
 
     const userName = onboarding?.full_name || "hermano";
     const onboardingInfo = onboarding ? `
@@ -103,85 +96,65 @@ ${onboardingInfo}
 ${premiumContext}
 ${memoryContext}`;
 
-    const contents = [
-      ...history.map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: m.parts
-      })),
-      { role: 'user', parts: [{ text: prompt }] }
-    ];
-
-      const response = await withRetry(async () => {
-        console.log('Calling Gemini API with model:', modelName);
-        return await ai.models.generateContent({
-          model: modelName,
-          contents: contents,
-          config: {
-            systemInstruction,
-            temperature: 0.8,
-            maxOutputTokens: 2048,
-            // tools: [{ googleSearch: {} }],
-          },
-        });
+    const response = await withRetry(async () => {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          prompt,
+          history,
+          systemInstruction,
+          isPremium,
+          memories
+        })
       });
 
-    if (!response || !response.text) {
-      throw new Error("No se recibió respuesta de Gemini.");
-    }
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || errorData.error || "Error en la respuesta del servidor");
+      }
+
+      return await res.json();
+    });
 
     return response.text;
   } catch (error: any) {
-    console.error(`Error calling Gemini API:`, error);
-    const errorMsg = (error.message || error.toString() || "").toLowerCase();
-    console.log('Gemini Error Details:', { message: error.message, stack: error.stack, errorMsg });
-    
-    if (errorMsg.includes('429') || errorMsg.includes('resource_exhausted') || errorMsg.includes('quota')) {
-      throw new Error("Has excedido tu cuota actual de la API de Gemini. Por favor, espera 1-2 minutos antes de intentarlo de nuevo.");
-    }
-
-    if (errorMsg.includes('expired') || errorMsg.includes('api_key_invalid') || errorMsg.includes('key not valid')) {
-      throw new Error("La clave de API de Gemini ha expirado o no es válida.");
-    }
-    
+    console.error(`Error calling Chat API:`, error);
     throw error;
   }
 };
 
 export const getSurahDetails = async (surahNumber: number, surahName: string, language: string) => {
   try {
-    const ai = getAI();
-    const prompt = `Proporciona detalles profundos sobre la Sura ${surahNumber} (${surahName}) del Corán en ${language}. 
-    Incluye:
-    1. Significado detallado del nombre.
-    2. Contexto histórico de la revelación (Asbab al-Nuzul).
-    3. Temas clave tratados en la Sura.
-    4. Importancia espiritual o beneficios mencionados en la tradición.`;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Debes iniciar sesión.");
 
     const response = await withRetry(async () => {
-      return await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT" as any,
-            properties: {
-              meaning: { type: "STRING" },
-              context: { type: "STRING" },
-              keyThemes: { type: "ARRAY", items: { type: "STRING" } },
-              historicalSignificance: { type: "STRING" }
-            },
-            required: ["meaning", "context", "keyThemes", "historicalSignificance"]
-          }
-        }
+      const res = await fetch('/api/surah-details', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          surahNumber,
+          surahName,
+          language
+        })
       });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Error fetching surah details");
+      }
+
+      return await res.json();
     });
 
-    if (!response || !response.text) {
-      throw new Error("No se recibió respuesta de Gemini.");
-    }
-
-    return JSON.parse(response.text);
+    return response;
   } catch (error: any) {
     console.error(`Error fetching Surah details:`, error);
     throw error;

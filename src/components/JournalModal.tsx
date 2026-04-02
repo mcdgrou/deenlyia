@@ -26,6 +26,7 @@ export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, dar
   const [mood, setMood] = useState('blessed');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'new'>('list');
 
   const moods = [
@@ -80,8 +81,21 @@ export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, dar
       setNewEntry('');
       setView('list');
       fetchEntries();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving entry:', error);
+      const msg = (error.message || "").toLowerCase();
+      let userMsg = "No se pudo guardar la reflexión.";
+      
+      if (msg.includes('cuota') || msg.includes('429') || msg.includes('quota')) {
+        userMsg = "Has excedido tu cuota de IA. Por favor, espera un momento.";
+      } else if (msg.includes('conexión') || msg.includes('json') || msg.includes('unexpected end')) {
+        userMsg = "Error de conexión con el servidor de IA. Inténtalo de nuevo.";
+      }
+      
+      // If we have a showToast function in props we should use it, but it's not there.
+      // We'll use a local error state instead of alert.
+      setError(userMsg);
+      setTimeout(() => setError(null), 5000);
     } finally {
       setIsSubmitting(false);
     }
@@ -201,6 +215,12 @@ export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, dar
                     }`}
                   />
                 </div>
+
+                {error && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold text-center">
+                    {error}
+                  </div>
+                )}
 
                 <button
                   onClick={handleSubmit}

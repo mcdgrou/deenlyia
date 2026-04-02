@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, ShieldCheck, Zap, LogOut, Calendar, Heart, BookOpen, TrendingUp, ChevronRight, Trash2, Trophy, Edit2, Lock, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, User, Mail, ShieldCheck, Zap, LogOut, Calendar, Heart, BookOpen, TrendingUp, ChevronRight, Trash2, Trophy, Edit2, Lock, Save, AlertCircle, CheckCircle2, Settings, Flame, MessageSquare, Search, FileText } from 'lucide-react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { favoriteService, type Favorite } from '../services/favoriteService';
@@ -17,7 +17,7 @@ interface ProfileModalProps {
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onNavigate, session, darkMode, isPremium, t, language }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'favorites' | 'progress'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'favorites' | 'progress' | 'settings'>('profile');
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -26,6 +26,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
   const [editPassword, setEditPassword] = useState('');
   const [updateStatus, setUpdateStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Stats for progress tab
+  const stats = session?.user.user_metadata?.stats || {
+    messagesSent: 0,
+    surahsRead: 0,
+    streak: 0,
+    quranSearches: 0,
+    hadithsRead: 0
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -69,7 +78,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
     setUpdateStatus(null);
     try {
       const updates: any = {
-        data: { full_name: editName }
+        data: { 
+          ...session?.user.user_metadata,
+          full_name: editName 
+        }
       };
 
       if (editEmail !== session?.user.email) {
@@ -115,6 +127,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
     { id: 'profile', label: t.profile || 'Perfil', icon: User },
     { id: 'favorites', label: t.favorites || 'Favoritos', icon: Heart },
     { id: 'progress', label: t.progress || 'Progreso', icon: TrendingUp },
+    { id: 'settings', label: t.settings || 'Ajustes', icon: Settings },
   ];
 
   return (
@@ -413,13 +426,57 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
                   </div>
                   <div className={`p-6 rounded-3xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white'}`}>
                     <div className="text-deenly-gold mb-2">
+                      <Flame size={24} />
+                    </div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-deenly-green'}`}>
+                      {stats.streak || 0}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest font-bold opacity-40">
+                      {t.streakDays || 'Días de Racha'}
+                    </div>
+                  </div>
+                  <div className={`p-6 rounded-3xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white'}`}>
+                    <div className="text-deenly-gold mb-2">
+                      <MessageSquare size={24} />
+                    </div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-deenly-green'}`}>
+                      {stats.messagesSent || 0}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest font-bold opacity-40">
+                      {t.messagesCount || 'Mensajes Enviados'}
+                    </div>
+                  </div>
+                  <div className={`p-6 rounded-3xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white'}`}>
+                    <div className="text-deenly-gold mb-2">
                       <BookOpen size={24} />
                     </div>
                     <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-deenly-green'}`}>
-                      {user.user_metadata?.onboarding?.knowledgeLevel || 'Principiante'}
+                      {stats.surahsRead || 0}
                     </div>
                     <div className="text-[10px] uppercase tracking-widest font-bold opacity-40">
-                      {t.knowledgeLevel || 'Nivel de Conocimiento'}
+                      {t.surahsReadCount || 'Suras Leídas'}
+                    </div>
+                  </div>
+                  <div className={`p-6 rounded-3xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white'}`}>
+                    <div className="text-deenly-gold mb-2">
+                      <Search size={24} />
+                    </div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-deenly-green'}`}>
+                      {stats.quranSearches || 0}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest font-bold opacity-40">
+                      {t.quranSearchesCount || 'Búsquedas'}
+                    </div>
+                  </div>
+                  <div className={`p-6 rounded-3xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white'}`}>
+                    <div className="text-deenly-gold mb-2">
+                      <FileText size={24} />
+                    </div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-deenly-green'}`}>
+                      {stats.hadithsRead || 0}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-widest font-bold opacity-40">
+                      {t.hadithsReadCount || 'Hadices Leídos'}
                     </div>
                   </div>
                 </div>
@@ -452,6 +509,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
                     {t.learningGoals || 'Objetivos de Aprendizaje'}
                   </h3>
                   <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-deenly-gold" />
+                        <span className={`text-sm font-medium ${darkMode ? 'text-white/80' : 'text-deenly-green/80'}`}>
+                          {t.knowledgeLevel || 'Nivel'}: {user.user_metadata?.onboarding?.knowledgeLevel || 'Principiante'}
+                        </span>
+                      </div>
+                    </div>
                     {user.user_metadata?.onboarding?.interests?.map((interest: string, i: number) => (
                       <div key={i} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -463,6 +528,95 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
                         <ChevronRight size={14} className="opacity-20" />
                       </div>
                     ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-deenly-gold px-2">
+                    {t.quickSettings || 'Ajustes Rápidos'}
+                  </h4>
+                  
+                  <button 
+                    onClick={() => onNavigate?.('settings')}
+                    className={`w-full p-4 rounded-2xl border border-deenly-gold/10 flex items-center justify-between transition-all ${
+                      darkMode ? 'bg-deenly-dark-bg/50 hover:bg-deenly-dark-bg' : 'bg-white/50 hover:bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-deenly-gold/10 flex items-center justify-center text-deenly-gold">
+                        <Settings size={16} />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-bold">{t.allSettings || 'Todos los Ajustes'}</p>
+                        <p className="text-[10px] opacity-50">{t.allSettingsDesc || 'Idioma, notificaciones, apariencia y más'}</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-deenly-gold" />
+                  </button>
+
+                  <div className={`p-4 rounded-2xl border border-deenly-gold/10 ${darkMode ? 'bg-deenly-dark-bg/50' : 'bg-white/50'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-deenly-gold/10 flex items-center justify-center text-deenly-gold">
+                          <ShieldCheck size={16} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold">{t.privacySettings || 'Privacidad'}</p>
+                          <p className="text-[10px] opacity-50">{t.privacySettingsDesc || 'Gestiona tus datos y permisos'}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => onNavigate?.('settings')}
+                        className="text-[10px] font-bold text-deenly-gold uppercase tracking-widest hover:underline"
+                      >
+                        {t.manage || 'Gestionar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {!isPremium && (
+                    <button 
+                      onClick={() => onNavigate?.('plans')}
+                      className="w-full p-6 rounded-3xl bg-deenly-gold text-white shadow-lg shadow-deenly-gold/20 flex items-center justify-between group overflow-hidden relative"
+                    >
+                      <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-2 -translate-y-2">
+                        <Zap size={80} fill="currentColor" />
+                      </div>
+                      <div className="relative z-10 flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
+                          <Zap className="text-white" size={24} fill="currentColor" />
+                        </div>
+                        <div className="text-left">
+                          <h3 className="text-sm font-bold">{t.upgradeToPro || 'Actualizar a Deenly Pro'}</h3>
+                          <p className="text-[10px] opacity-80">{t.upgradeDesc || 'IA ilimitada, temas exclusivos y más'}</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={20} className="relative z-10 transition-transform group-hover:translate-x-1" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="pt-4 space-y-3">
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-deenly-gold px-2">
+                    {t.support || 'Soporte'}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button className={`p-4 rounded-2xl border border-deenly-gold/10 text-center transition-all ${darkMode ? 'bg-deenly-dark-bg/50 hover:bg-deenly-dark-bg' : 'bg-white/50 hover:bg-white'}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-deenly-gold">{t.helpCenter || 'Ayuda'}</p>
+                    </button>
+                    <button className={`p-4 rounded-2xl border border-deenly-gold/10 text-center transition-all ${darkMode ? 'bg-deenly-dark-bg/50 hover:bg-deenly-dark-bg' : 'bg-white/50 hover:bg-white'}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-deenly-gold">{t.contactUs || 'Contacto'}</p>
+                    </button>
                   </div>
                 </div>
               </motion.div>

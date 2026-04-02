@@ -251,7 +251,11 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
           });
 
           navigator.mediaSession.setActionHandler('play', () => {
-            if (audioRef.current) audioRef.current.play();
+            if (audioRef.current) {
+              audioRef.current.play().catch(err => {
+                console.error("MediaSession play failed:", err);
+              });
+            }
             navigator.mediaSession.playbackState = 'playing';
           });
           navigator.mediaSession.setActionHandler('pause', () => {
@@ -540,10 +544,12 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
       let userMessage = error.message || "No se pudieron cargar los detalles adicionales";
       const msg = userMessage.toLowerCase();
       
-      if (msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota')) {
+      if (msg.includes('cuota') || msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota')) {
         userMessage = "Has excedido tu cuota de la API de Gemini. Por favor, espera unos minutos o verifica los límites de tu plan en Google AI Studio.";
-      } else if (msg.includes('expired') || msg.includes('api_key_invalid') || msg.includes('key not valid')) {
+      } else if (msg.includes('expirado') || msg.includes('expired') || msg.includes('api_key_invalid') || msg.includes('key not valid')) {
         userMessage = "La clave de API de Gemini ha expirado o no es válida. Por favor, actualiza la clave en la configuración.";
+      } else if (msg.includes('conexión') || msg.includes('json') || msg.includes('unexpected end')) {
+        userMessage = "Error de conexión con el servidor de IA. Por favor, intenta de nuevo en unos segundos.";
       }
       
       // We still have the basic info, so just show a toast

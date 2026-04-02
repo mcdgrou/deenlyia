@@ -32,23 +32,33 @@ const AyahOfTheDay: React.FC<AyahOfTheDayProps> = ({ darkMode, language, t }) =>
     fetchAyah();
   }, [language]);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!ayah) return;
     const textToCopy = `${ayah.arabicText}\n\n${ayah.translation}\n\n${ayah.explanation ? `Explicación: ${ayah.explanation}\n\n` : ''}— ${t.quran} ${ayah.surah.number}:${ayah.numberInSurah} (${ayah.surah.englishName})`;
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!ayah) return;
     const textToShare = `📖 ${t.ayahOfTheDay} en Deenly:\n\n"${ayah.translation}"\n\n— ${t.quran} ${ayah.surah.number}:${ayah.numberInSurah} (${ayah.surah.englishName})`;
     if (navigator.share) {
-      navigator.share({
-        title: `${t.ayahOfTheDay} - Deenly`,
-        text: textToShare,
-        url: window.location.href,
-      });
+      try {
+        await navigator.share({
+          title: `${t.ayahOfTheDay} - Deenly`,
+          text: textToShare,
+          url: window.location.href,
+        });
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          handleCopy();
+        }
+      }
     } else {
       handleCopy();
     }
