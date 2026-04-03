@@ -53,7 +53,7 @@ app.get("/api/health", (req, res) => {
       nodeEnv: process.env.NODE_ENV,
       stripe: !!process.env.STRIPE_SECRET_KEY,
       supabase: !!process.env.VITE_SUPABASE_URL,
-      gemini: !!(process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY)
+      gemini: !!(process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY)
     }
   });
 });
@@ -302,8 +302,8 @@ app.post("/api/chat", async (req, res) => {
     // 3. Call Gemini API
     const { prompt, history, systemInstruction, isPremium, memories } = req.body;
     
-    const apiKey = process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured" });
+    const apiKey = process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured. Please add a valid Google Gemini API Key to your environment variables as DEENLY_API_KEY." });
 
     const ai = new GoogleGenAI({ apiKey });
     const modelName = profile.is_premium ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
@@ -359,8 +359,8 @@ app.post("/api/surah-details", async (req, res) => {
 
     const { surahNumber, surahName, language } = req.body;
     
-    const apiKey = process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured" });
+    const apiKey = process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured. Please add a valid Google Gemini API Key to your environment variables as DEENLY_API_KEY." });
 
     const ai = new GoogleGenAI({ apiKey });
     const prompt = `Proporciona detalles profundos sobre la Sura ${surahNumber} (${surahName}) del Corán en ${language}. 
