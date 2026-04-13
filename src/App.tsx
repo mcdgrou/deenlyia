@@ -32,9 +32,19 @@ import {
   Download
 } from 'lucide-react';
 import { Logo } from './components/Logo';
+import { Auth } from './components/Auth';
+import { Onboarding, type OnboardingData } from './components/Onboarding';
+import AyahOfTheDay from './components/AyahOfTheDay';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { getMuftiResponse, type ChatMessage as GeminiChatMessage } from './services/geminiService';
+import { ThinkingIndicator } from './components/ThinkingIndicator';
+import { chatService, type Chat, type Message as DbMessage } from './services/chatService';
+import ReactMarkdown from 'react-markdown';
+import type { Session } from '@supabase/supabase-js';
+import { motion, AnimatePresence } from 'framer-motion';
+
 import { QuranSearchModal } from './components/QuranSearchModal';
 import { SurahLibrary } from './components/SurahLibrary';
-import { Auth } from './components/Auth';
 import { ProfileModal } from './components/ProfileModal';
 import { SettingsModal } from './components/SettingsModal';
 import { AboutModal } from './components/AboutModal';
@@ -43,16 +53,8 @@ import { PlansModal } from './components/PlansModal';
 import { HadithModal } from './components/HadithModal';
 import { PrayerTimesModal } from './components/PrayerTimesModal';
 import { AchievementsModal } from './components/AchievementsModal';
-import { Onboarding, type OnboardingData } from './components/Onboarding';
 import { JournalModal } from './components/JournalModal';
 import { ProgressModal } from './components/ProgressModal';
-import AyahOfTheDay from './components/AyahOfTheDay';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { getMuftiResponse, type ChatMessage as GeminiChatMessage } from './services/geminiService';
-import { chatService, type Chat, type Message as DbMessage } from './services/chatService';
-import ReactMarkdown from 'react-markdown';
-import type { Session } from '@supabase/supabase-js';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface Message {
   id: string;
@@ -142,6 +144,8 @@ export default function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -704,7 +708,14 @@ export default function App() {
       achSearcher: 'Investigador Fiel',
       achSearcherDesc: 'Realiza 10 búsquedas en el Corán.',
       unlockProAchievements: 'Desbloquea Logros Pro',
-      proAchievementsDesc: 'Acceso a medallas exclusivas y recompensas.'
+      proAchievementsDesc: 'Acceso a medallas exclusivas y recompensas.',
+      invalidApiKey: 'Clave de API no válida. Por favor, contacta con soporte o revisa tu configuración.',
+      rateLimitReached: 'Límite de peticiones alcanzado. Por favor, espera un momento antes de intentar de nuevo.',
+      serviceUnavailable: 'El servicio no está disponible en este momento. Por favor, inténtalo más tarde.',
+      invalidArgument: 'La solicitud contiene argumentos no válidos o el mensaje es demasiado largo.',
+      permissionDenied: 'No tienes permiso para realizar esta acción o la clave de API está restringida.',
+      internalError: 'Ha ocurrido un error interno en los servidores de la IA. Por favor, inténtalo de nuevo más tarde.',
+      quotaExhausted: 'Has agotado tu cuota de uso de la API. Por favor, revisa tu plan o espera a que se restablezca.',
     },
     'English': {
       welcomeBrother: 'As-salamu alaykum! Welcome back, brother. How can I help you today?',
@@ -895,7 +906,14 @@ export default function App() {
       achSearcher: 'Faithful Searcher',
       achSearcherDesc: 'Perform 10 searches in the Quran.',
       unlockProAchievements: 'Unlock Pro Achievements',
-      proAchievementsDesc: 'Access to exclusive badges and rewards.'
+      proAchievementsDesc: 'Access to exclusive badges and rewards.',
+      invalidApiKey: 'Invalid API Key. Please contact support or check your configuration.',
+      rateLimitReached: 'Rate limit reached. Please wait a moment before trying again.',
+      serviceUnavailable: 'The service is currently unavailable. Please try again later.',
+      invalidArgument: 'The request contains invalid arguments or the message is too long.',
+      permissionDenied: 'You do not have permission to perform this action or the API key is restricted.',
+      internalError: 'An internal error occurred in the AI servers. Please try again later.',
+      quotaExhausted: 'You have exhausted your API usage quota. Please check your plan or wait for it to reset.',
     },
     'Français': {
       welcomeBrother: 'As-salamu alaykum ! Bon retour, mon frère. Comment puis-je t\'aider aujourd\'hui ?',
@@ -1005,7 +1023,14 @@ export default function App() {
       achScholar: 'Érudit du Hadith',
       achScholarDesc: 'Lisez 5 Hadiths de la bibliothèque.',
       unlockProAchievements: 'Débloquer les Hauts Faits Pro',
-      proAchievementsDesc: 'Accès à des badges et récompenses exclusifs.'
+      proAchievementsDesc: 'Accès à des badges et récompenses exclusifs.',
+      invalidApiKey: 'Clé API invalide. Veuillez contacter le support ou vérifier votre configuration.',
+      rateLimitReached: 'Limite de requêtes atteinte. Veuillez patienter un moment avant de réessayer.',
+      serviceUnavailable: 'Le service est actuellement indisponible. Veuillez réessayer plus tard.',
+      invalidArgument: 'La demande contient des arguments invalides ou le message est trop long.',
+      permissionDenied: 'Vous n\'avez pas la permission d\'effectuer cette action ou la clé API est restreinte.',
+      internalError: 'Une erreur interne s\'est produite sur les serveurs d\'IA. Veuillez réessayer plus tard.',
+      quotaExhausted: 'Vous avez épuisé votre quota d\'utilisation de l\'API. Veuillez vérifier votre plan ou attendre qu\'il soit réinitialisé.',
     },
     'العربية': {
       welcomeBrother: 'السلام عليكم! أهلاً بك من جديد يا أخي. كيف يمكنني مساعدتك اليوم؟',
@@ -1115,7 +1140,14 @@ export default function App() {
       achScholar: 'عالم الحديث',
       achScholarDesc: 'اقرأ 5 أحاديث من المكتبة.',
       unlockProAchievements: 'فتح إنجازات برو',
-      proAchievementsDesc: 'الوصول إلى شارات ومكافآت حصرية.'
+      proAchievementsDesc: 'الوصol إلى شارات ومكافآت حصرية.',
+      invalidApiKey: 'مفتاح API غير صالح. يرجى الاتصال بالدعم أو التحقق من الإعدادات الخاصة بك.',
+      rateLimitReached: 'تم الوصول إلى حد الطلبات. يرجى الانتظار قليلاً قبل المحاولة مرة أخرى.',
+      serviceUnavailable: 'الخدمة غير متوفرة حالياً. يرجى المحاولة لاحقاً.',
+      invalidArgument: 'يحتوي الطلب على وسيطات غير صالحة أو الرسالة طويلة جداً.',
+      permissionDenied: 'ليس لديك إذن للقيام بهذا الإجراء أو مفتاح API مقيد.',
+      internalError: 'حدث خطأ داخلي في خوادم الذكاء الاصطناعي. يرجى المحاولة مرة أخرى لاحقاً.',
+      quotaExhausted: 'لقد استنفدت حصة استخدام API الخاصة بك. يرجى التحقق من خطتك أو الانتظار حتى يتم إعادة تعيينها.',
     },
     'Indonesian': {
       welcomeBrother: 'As-salamu alaykum! Selamat datang kembali, saudara. Apa yang bisa saya bantu hari ini?',
@@ -1225,7 +1257,14 @@ export default function App() {
       achScholar: 'Sarjana Hadits',
       achScholarDesc: 'Baca 5 Hadits dari perpustakaan.',
       unlockProAchievements: 'Buka Pencapaian Pro',
-      proAchievementsDesc: 'Akses ke lencana dan hadiah eksklusif.'
+      proAchievementsDesc: 'Akses ke lencana dan hadiah eksklusif.',
+      invalidApiKey: 'Kunci API tidak valid. Silakan hubungi dukungan atau periksa konfigurasi Anda.',
+      rateLimitReached: 'Batas permintaan tercapai. Silakan tunggu sebentar sebelum mencoba lagi.',
+      serviceUnavailable: 'Layanan saat ini tidak tersedia. Silakan coba lagi nanti.',
+      invalidArgument: 'Permintaan berisi argumen yang tidak valid atau pesan terlalu panjang.',
+      permissionDenied: 'Anda tidak memiliki izin untuk melakukan tindakan ini atau kunci API dibatasi.',
+      internalError: 'Terjadi kesalahan internal di server AI. Silakan coba lagi nanti.',
+      quotaExhausted: 'Anda telah menghabiskan kuota penggunaan API Anda. Silakan periksa paket Anda atau tunggu hingga disetel ulang.',
     },
     'Deutsch': {
       welcomeBrother: 'As-salamu alaykum! Willkommen zurück, Bruder. Wie kann ich dir heute helfen?',
@@ -1335,7 +1374,14 @@ export default function App() {
       achScholar: 'Hadith-Gelehrter',
       achScholarDesc: 'Lesen Sie 5 Hadithe aus der Bibliothek.',
       unlockProAchievements: 'Pro-Erfolge freischalten',
-      proAchievementsDesc: 'Zugriff auf exklusive Abzeichen und Belohnungen.'
+      proAchievementsDesc: 'Zugriff auf exklusive Abzeichen und Belohnungen.',
+      invalidApiKey: 'Ungültiger API-Schlüssel. Bitte kontaktieren Sie den Support oder überprüfen Sie Ihre Konfiguration.',
+      rateLimitReached: 'Anfragelimit erreicht. Bitte warten Sie einen Moment, bevor Sie es erneut versuchen.',
+      serviceUnavailable: 'Der Dienst ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.',
+      invalidArgument: 'Die Anfrage enthält ungültige Argumente oder die Nachricht ist zu lang.',
+      permissionDenied: 'Sie haben keine Berechtigung, diese Aktion auszuführen, oder der API-Schlüssel ist eingeschränkt.',
+      internalError: 'Auf den KI-Servern ist ein interner Fehler aufgetreten. Bitte versuchen Sie es später erneut.',
+      quotaExhausted: 'Sie haben Ihr API-Nutzungskontingent erschöpft. Bitte überprüfen Sie Ihren Plan oder warten Sie auf die Zurücksetzung.',
     }
   };
 
@@ -1683,6 +1729,14 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: session.user.id }),
+        }).catch(err => {
+          console.warn('Initial usage increment fetch failed, retrying...', err);
+          // Simple retry
+          return fetch('/api/usage/increment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: session.user.id }),
+          });
         });
         
         if (usageResponse.status === 403) {
@@ -1736,13 +1790,27 @@ export default function App() {
 
     setInput('');
     setIsLoading(true);
+    setGenerationProgress(0);
+    setIsStreaming(false);
+
+    // Simulate progress while waiting for the first chunk
+    const progressInterval = setInterval(() => {
+      setGenerationProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + (90 - prev) * 0.1;
+      });
+    }, 500);
 
     // Update achievement stats
     updateStats('messagesSent');
 
+    let dbUserMsg: any = null;
     try {
       // Save user message to DB
-      const dbUserMsg = await chatService.addMessage(activeSessionId, 'user', input);
+      dbUserMsg = await chatService.addMessage(activeSessionId, 'user', input);
       if (!dbUserMsg) throw new Error("No se pudo guardar el mensaje del usuario en la base de datos.");
       
       const history: GeminiChatMessage[] = updatedMessages.slice(-6).map(m => ({
@@ -1763,7 +1831,36 @@ export default function App() {
       }
       
       console.log('Calling getMuftiResponse with input:', input);
-      const response = await getMuftiResponse(input, history, session?.user?.user_metadata?.onboarding, isPremium, userMemories);
+      
+      const streamingId = (Date.now() + 2).toString();
+      let accumulatedText = "";
+
+      const response = await getMuftiResponse(
+        input, 
+        history, 
+        session?.user?.user_metadata?.onboarding, 
+        isPremium, 
+        userMemories,
+        language,
+        (chunk) => {
+          clearInterval(progressInterval);
+          setGenerationProgress(100);
+          setIsStreaming(true);
+          accumulatedText += chunk;
+          setMessages(prev => {
+            const hasStreamingMsg = prev.some(m => m.id === streamingId);
+            if (hasStreamingMsg) {
+              return prev.map(m => m.id === streamingId ? { ...m, text: accumulatedText } : m);
+            } else {
+              return [...prev, { id: streamingId, role: 'assistant', text: accumulatedText, timestamp: new Date() }];
+            }
+          });
+        }
+      );
+      
+      if (!response || response.trim() === "") {
+        throw new Error(language === 'Español' ? "El asistente no pudo generar una respuesta. Por favor, intenta de nuevo." : "The assistant could not generate a response. Please try again.");
+      }
       console.log('Received response from getMuftiResponse:', !!response);
       
       // Save model response to DB
@@ -1793,14 +1890,77 @@ export default function App() {
           : s
       ));
     } catch (error: any) {
+      clearInterval(progressInterval);
       console.error('Error:', error);
+      
+      let displayError = error.message || t.error;
+      const lowerError = displayError.toLowerCase();
+      
+      // Map common error strings to localized messages
+      if (lowerError.includes('api key not valid') || lowerError.includes('invalid api key')) {
+        displayError = t.invalidApiKey || displayError;
+      } else if (lowerError.includes('rate limit') || lowerError.includes('429')) {
+        displayError = t.rateLimitReached || displayError;
+      } else if (lowerError.includes('quota')) {
+        displayError = t.quotaExhausted || displayError;
+      } else if (lowerError.includes('service unavailable') || lowerError.includes('503') || lowerError.includes('unavailable')) {
+        displayError = t.serviceUnavailable || displayError;
+      } else if (lowerError.includes('invalid argument') || lowerError.includes('400')) {
+        displayError = t.invalidArgument || displayError;
+      } else if (lowerError.includes('permission denied') || lowerError.includes('403')) {
+        displayError = t.permissionDenied || displayError;
+      } else if (lowerError.includes('internal error') || lowerError.includes('500')) {
+        displayError = t.internalError || displayError;
+      } else if (displayError.includes('{') && displayError.includes('}')) {
+        // Try to parse JSON error if it looks like one
+        try {
+          // Strip SSE prefix if present
+          const cleanError = displayError.replace(/^(data:\s*)+/i, '').trim();
+          
+          const startIdx = cleanError.indexOf('{');
+          const endIdx = cleanError.lastIndexOf('}') + 1;
+          const jsonStr = cleanError.substring(startIdx, endIdx);
+          const parsed = JSON.parse(jsonStr);
+          
+          // Handle nested error structure from Gemini
+          let finalError = parsed.error || parsed;
+          if (typeof finalError === 'string' && finalError.includes('{')) {
+            try {
+              finalError = JSON.parse(finalError).error || JSON.parse(finalError);
+            } catch (e) { /* ignore */ }
+          }
+          
+          if (finalError.code === 503 || finalError.status === 'UNAVAILABLE') {
+            displayError = t.serviceUnavailable || displayError;
+          } else if (finalError.code === 429 || finalError.status === 'RESOURCE_EXHAUSTED') {
+            if (finalError.message?.toLowerCase().includes('quota')) {
+              displayError = t.quotaExhausted || displayError;
+            } else {
+              displayError = t.rateLimitReached || displayError;
+            }
+          } else if (finalError.code === 400 || finalError.status === 'INVALID_ARGUMENT') {
+            displayError = t.invalidArgument || displayError;
+          } else if (finalError.code === 403 || finalError.status === 'PERMISSION_DENIED') {
+            displayError = t.permissionDenied || displayError;
+          } else if (finalError.code === 500 || finalError.status === 'INTERNAL') {
+            displayError = t.internalError || displayError;
+          } else if (finalError.message) {
+            displayError = finalError.message;
+          }
+        } catch (e) {
+          // Fallback to original message if parsing fails
+        }
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        text: error.message || t.error,
+        text: displayError,
         timestamp: new Date()
       };
-      const finalMessages = [...updatedMessages, errorMessage];
+      
+      // Ensure we remove the temp message and add the error message
+      const finalMessages = [...updatedMessages.filter(m => m.id !== tempId), { ...userMessage, id: dbUserMsg?.id || tempId }, errorMessage];
       
       setCurrentSessionId(prev => {
         if (prev === activeSessionId) {
@@ -1816,6 +1976,8 @@ export default function App() {
       ));
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
+      setGenerationProgress(0);
     }
   };
 
@@ -2067,36 +2229,13 @@ export default function App() {
               </motion.div>
             ))}
           </AnimatePresence>
-          {isLoading && (
+          {isLoading && !isStreaming && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex justify-start"
+              className="flex justify-start mb-6"
             >
-              <div className={`p-4 rounded-2xl rounded-tl-none ${darkMode ? 'bg-deenly-dark-surface/50 border-deenly-gold/20' : 'bg-white/80 border-deenly-gold/10'} border backdrop-blur-sm shadow-sm`}>
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1">
-                    {[0, 1, 2].map(i => (
-                      <motion.div
-                        key={i}
-                        animate={{ 
-                          scale: [1, 1.5, 1],
-                          opacity: [0.3, 1, 0.3]
-                        }}
-                        transition={{ 
-                          repeat: Infinity, 
-                          duration: 1.2, 
-                          delay: i * 0.2 
-                        }}
-                        className="w-1.5 h-1.5 rounded-full bg-deenly-gold"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-deenly-gold/60 animate-pulse">
-                    {language === 'Español' ? 'Deenly está pensando...' : 'Deenly is thinking...'}
-                  </span>
-                </div>
-              </div>
+              <ThinkingIndicator />
             </motion.div>
           )}
           <div ref={messagesEndRef} />
@@ -2166,6 +2305,15 @@ export default function App() {
             )}
           </div>
           <div className={`max-w-3xl mx-auto relative group transition-opacity ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+            {isLoading && !isStreaming && (
+              <div className="absolute -top-1 left-0 w-full h-0.5 bg-deenly-gold/10 overflow-hidden rounded-full">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${generationProgress}%` }}
+                  className="h-full bg-deenly-gold shadow-[0_0_8px_rgba(212,175,55,0.5)]"
+                />
+              </div>
+            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -2461,117 +2609,132 @@ export default function App() {
           </>
         )}
 
-      {/* Quran Search Modal */}
-      <QuranSearchModal 
-        isOpen={activeModal === 'search'} 
-        onClose={closeModal} 
-        darkMode={darkMode}
-        isPremium={isPremium}
-        session={session}
-        onAction={() => updateStats('quranSearches')}
-      />
+      {/* Modals */}
+      <div className="contents">
+        {/* Quran Search Modal */}
+        <QuranSearchModal 
+          isOpen={activeModal === 'search'} 
+          onClose={closeModal} 
+          darkMode={darkMode}
+          isPremium={isPremium}
+          session={session}
+          onAction={() => updateStats('quranSearches')}
+        />
 
-      {/* Surah Library Modal */}
-      <SurahLibrary
-        isOpen={activeModal === 'surah'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        session={session}
-        language={language}
-        showToast={showToast}
-        onAction={() => updateStats('surahsRead')}
-      />
+        {/* Surah Library Modal */}
+        <SurahLibrary
+          isOpen={activeModal === 'surah'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          session={session}
+          language={language}
+          showToast={showToast}
+          onAction={() => updateStats('surahsRead')}
+        />
 
-      {/* Profile Modal */}
-      <ProfileModal
-        isOpen={activeModal === 'profile'}
-        onClose={closeModal}
-        onNavigate={openModal}
-        session={session}
-        darkMode={darkMode}
-        isPremium={isPremium}
-        t={t}
-        language={language}
-      />
+        {/* Profile Modal */}
+        <ProfileModal
+          isOpen={activeModal === 'profile'}
+          onClose={closeModal}
+          onNavigate={openModal}
+          session={session}
+          darkMode={darkMode}
+          isPremium={isPremium}
+          t={t}
+          language={language}
+        />
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={activeModal === 'settings'}
-        onClose={closeModal}
-        onNavigate={openModal}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-        fontSize={fontSize}
-        setFontSize={setFontSize}
-        theme={theme}
-        setTheme={setTheme}
-        cardStyle={cardStyle}
-        setCardStyle={setCardStyle}
-        isPremium={isPremium}
-        session={session}
-        onOpenLegal={openLegalModal}
-        showToast={showToast}
-      />
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={activeModal === 'settings'}
+          onClose={closeModal}
+          onNavigate={openModal}
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          fontSize={fontSize}
+          setFontSize={setFontSize}
+          theme={theme}
+          setTheme={setTheme}
+          cardStyle={cardStyle}
+          setCardStyle={setCardStyle}
+          isPremium={isPremium}
+          session={session}
+          onOpenLegal={openLegalModal}
+          showToast={showToast}
+        />
 
-      <HadithModal
-        isOpen={activeModal === 'hadith'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        t={t}
-        onAction={() => updateStats('hadithsRead')}
-      />
+        <HadithModal
+          isOpen={activeModal === 'hadith'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          t={t}
+          onAction={() => updateStats('hadithsRead')}
+        />
 
-      <AchievementsModal
-        isOpen={activeModal === 'achievements'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        isPremium={isPremium}
-        stats={achievementsStats}
-        t={t}
-        onUpgrade={() => openModal('plans')}
-      />
+        <AchievementsModal
+          isOpen={activeModal === 'achievements'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          isPremium={isPremium}
+          stats={achievementsStats}
+          t={t}
+          onUpgrade={() => openModal('plans')}
+        />
 
-      <PrayerTimesModal
-        isOpen={activeModal === 'prayer'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        language={language}
-        t={t}
-        showToast={showToast}
-      />
+        <PrayerTimesModal
+          isOpen={activeModal === 'prayer'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          language={language}
+          t={t}
+          showToast={showToast}
+        />
 
-      <JournalModal
-        isOpen={activeModal === 'journal'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        userId={session?.user?.id || ''}
-        t={t}
-      />
+        <JournalModal
+          isOpen={activeModal === 'journal'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          userId={session?.user?.id || ''}
+          t={t}
+        />
 
-      <ProgressModal
-        isOpen={activeModal === 'progress'}
-        onClose={closeModal}
-        darkMode={darkMode}
-        userId={session?.user?.id || ''}
-        isPremium={isPremium}
-        t={t}
-      />
+        <ProgressModal
+          isOpen={activeModal === 'progress'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          userId={session?.user?.id || ''}
+          isPremium={isPremium}
+          t={t}
+        />
 
-      <AboutModal
-        isOpen={activeModal === 'about'}
-        onClose={closeModal}
-        onOpenLegal={openLegalModal}
-        darkMode={darkMode}
-        t={t}
-      />
+        <AboutModal
+          isOpen={activeModal === 'about'}
+          onClose={closeModal}
+          onOpenLegal={openLegalModal}
+          darkMode={darkMode}
+          t={t}
+        />
 
-      <LegalModal
-        isOpen={activeModal === 'legal'}
-        onClose={closeModal}
-        type={legalModalType}
-        darkMode={darkMode}
-        t={t}
-      />
+        <LegalModal
+          isOpen={activeModal === 'legal'}
+          onClose={closeModal}
+          type={legalModalType}
+          darkMode={darkMode}
+          t={t}
+        />
+
+        {/* Plans Modal */}
+        <PlansModal
+          isOpen={activeModal === 'plans'}
+          onClose={closeModal}
+          darkMode={darkMode}
+          isPremium={isPremium}
+          onUpgrade={handleUpgrade}
+          onManage={handleManageSubscription}
+          showToast={showToast}
+          t={t}
+        />
+      </div>
 
       {/* Confirmation Dialog */}
       <AnimatePresence>
