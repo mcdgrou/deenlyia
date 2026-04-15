@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as cheerio from "cheerio";
 import { GoogleGenAI } from "@google/genai";
 
 // ES Module fix for __dirname
@@ -14,19 +15,63 @@ dotenv.config();
 
 console.log("DEENLY SERVER STARTING...");
 
-// Cache for AI responses
-const aiCache = new Map<string, { text: string, timestamp: number }>();
-const CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
+// --- Scraping Logic ---
+async function scrapeIslamicContent(query: string): Promise<string> {
+  try {
+    console.log(`Scraping Islamic content for: ${query}`);
+    
+    // We'll search on Sunnah.com as a primary source for Hadiths
+    const searchUrl = `https://sunnah.com/search?q=${encodeURIComponent(query)}`;
+    
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    });
 
-// Cleanup cache periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of aiCache.entries()) {
-    if (now - value.timestamp > CACHE_TTL) {
-      aiCache.delete(key);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch from Sunnah.com: ${response.statusText}`);
     }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+    
+    let extractedText = "";
+    
+    // Extract Hadith text from search results
+    // Sunnah.com search results usually have hadiths in .hadith_basic or similar classes
+    $(".hadith_basic").each((i, el) => {
+      if (i < 3) { // Limit to top 3 results
+        const text = $(el).text().trim();
+        if (text) {
+          extractedText += text + "\n---\n";
+        }
+      }
+    });
+
+    // If no hadiths found, try to get some general text from the page
+    if (!extractedText) {
+      $("p").each((i, el) => {
+        if (i < 5) {
+          const text = $(el).text().trim();
+          if (text.length > 50) {
+            extractedText += text + "\n";
+          }
+        }
+      });
+    }
+
+    // Clean and limit
+    const cleanedText = extractedText
+      .replace(/\s+/g, ' ')
+      .substring(0, 1500);
+
+    return cleanedText || "No specific Islamic context found for this query.";
+  } catch (error) {
+    console.error("Scraping error:", error);
+    return "";
   }
-}, 1000 * 60 * 60); // Every hour
+}
 
 // Lazy initialization helpers
 let stripeClient: Stripe | null = null;
@@ -200,20 +245,53 @@ app.post("/api/create-portal-session", async (req, res) => {
   }
 });
 
+async function getOrCreateProfile(supabaseAdmin: any, userId: string, email?: string) {
+  try {
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('is_premium, daily_questions_count, last_question_reset_at, email')
+      .eq('id', userId)
+      .single();
+
+    if (profile) return profile;
+
+    // If not found, create it
+    console.log(`Profile not found for user ${userId}, creating one...`);
+    
+    // Use upsert to handle potential race conditions where profile was created between select and insert
+    const { data: newProfile, error: createError } = await supabaseAdmin
+      .from('profiles')
+      .upsert([{ 
+        id: userId, 
+        email: email || '',
+        is_premium: false,
+        daily_questions_count: 0,
+        last_question_reset_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('Error creating/upserting profile for user', userId, ':', JSON.stringify(createError, null, 2));
+      throw new Error(`Could not create user profile: ${createError.message || JSON.stringify(createError)}`);
+    }
+
+    return newProfile;
+  } catch (error: any) {
+    console.error('getOrCreateProfile critical error:', error);
+    throw error;
+  }
+}
+
 app.post("/api/usage/check", async (req, res) => {
   const { userId } = req.body;
   const supabaseAdmin = getSupabaseAdmin();
   if (!supabaseAdmin) return res.status(500).json({ error: "Server error" });
 
   try {
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('is_premium, daily_questions_count, last_question_reset_at')
-      .eq('id', userId)
-      .single();
-
-    if (!profile) return res.status(404).json({ error: "Profile not found" });
-
+    const profile = await getOrCreateProfile(supabaseAdmin, userId);
+    
     const lastReset = new Date(profile.last_question_reset_at || new Date());
     const now = new Date();
     const diffHours = (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60);
@@ -241,13 +319,8 @@ app.post("/api/usage/increment", async (req, res) => {
 
   try {
     console.log(`Incrementing usage for user: ${userId}`);
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('is_premium, daily_questions_count, last_question_reset_at')
-      .eq('id', userId)
-      .single();
-
-    if (!profile) return res.status(404).json({ error: "Profile not found" });
+    const profile = await getOrCreateProfile(supabaseAdmin, userId);
+    
     if (profile.is_premium) return res.json({ success: true, isPremium: true });
 
     const now = new Date();
@@ -260,8 +333,9 @@ app.post("/api/usage/increment", async (req, res) => {
       resetAt = now.toISOString();
     }
 
-    if (currentCount >= 15) {
-      return res.status(403).json({ error: "Limit reached", message: "Has alcanzado el límite de 15 preguntas cada 12h." });
+    const FREE_LIMIT = 25;
+    if (currentCount >= FREE_LIMIT) {
+      return res.status(403).json({ error: "Limit reached", message: `Has alcanzado el límite de ${FREE_LIMIT} preguntas cada 12h.` });
     }
 
     await supabaseAdmin
@@ -275,308 +349,80 @@ app.post("/api/usage/increment", async (req, res) => {
   }
 });
 
-app.post("/api/chat", async (req, res) => {
-  console.log("Chat API called");
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
-
-  const token = authHeader.split(" ")[1];
-  const supabaseAdmin = getSupabaseAdmin();
-  if (!supabaseAdmin) return res.status(500).json({ error: "Server error" });
-
+app.post("/api/search", async (req, res) => {
   try {
-    // 1. Verify User
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ error: "Unauthorized" });
-
-    const userId = user.id;
-
-    // 2. Check Usage Limits
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('is_premium, daily_questions_count, last_question_reset_at')
-      .eq('id', userId)
-      .single();
-
-    if (!profile) return res.status(404).json({ error: "Profile not found" });
-
-    const now = new Date();
-    const lastReset = profile.last_question_reset_at ? new Date(profile.last_question_reset_at) : null;
-    let currentCount = profile.daily_questions_count || 0;
-    let resetAt = profile.last_question_reset_at;
-
-    // Reset count if 12h passed
-    if (!lastReset || (now.getTime() - lastReset.getTime()) >= (12 * 60 * 60 * 1000)) {
-      currentCount = 0;
-      resetAt = now.toISOString();
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Query is required" });
     }
-
-    const FREE_LIMIT = 25; // Increased from 15 for better user experience
-    if (!profile.is_premium && currentCount >= FREE_LIMIT) {
-      return res.status(403).json({ error: "Limit reached", message: `Has alcanzado el límite de ${FREE_LIMIT} preguntas cada 12h.` });
-    }
-
-    // 3. Call Gemini API
-    const { prompt, history, systemInstruction, isPremium, memories, language = 'Español' } = req.body;
-    
-    if (!prompt || prompt.trim() === "") {
-      return res.status(400).json({ error: "Empty prompt", message: "Por favor, escribe una pregunta." });
-    }
-
-    // Special case for simple greetings to ensure a response even if AI is busy
-    const lowerPrompt = prompt.toLowerCase().trim();
-    if (lowerPrompt === 'hola' || lowerPrompt === 'hi' || lowerPrompt === 'hello') {
-      const greeting = language === 'Español' 
-        ? "¡As-salamu alaykum! Es un placer saludarte. ¿En qué puedo ayudarte hoy en tu camino espiritual?"
-        : "As-salamu alaykum! It is a pleasure to greet you. How can I help you today on your spiritual journey?";
-      
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.write(`data: ${JSON.stringify({ text: greeting })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return res.end();
-    }
-    
-    // Simple caching for new chats without history or memories
-    const cacheKey = `chat:${prompt}:${systemInstruction.length}`;
-    if (!history?.length && !memories?.length) {
-      const cached = aiCache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.write(`data: ${JSON.stringify({ text: cached.text })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        return res.end();
-      }
-    }
-
-    const apiKey = process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY || "AIzaSyBTu80f8AUi9cCkhU61nrPCgIVBg0fx6-4";
-    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured." });
-
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Fallback logic for models
-    const primaryModel = profile.is_premium ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
-    const fallbackModel = "gemini-flash-latest";
-    
-    const contents = [
-      ...history.map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: m.parts
-      })),
-      { role: 'user', parts: [{ text: prompt }] }
-    ];
-
-    // Set headers for streaming
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    let stream;
-    let usedModel = primaryModel;
-
-    try {
-      stream = await ai.models.generateContentStream({
-        model: primaryModel,
-        contents: contents,
-        config: {
-          systemInstruction,
-          temperature: profile.is_premium ? 0.8 : 0.7,
-          maxOutputTokens: profile.is_premium ? 8192 : 4096,
-        },
-      });
-    } catch (primaryError: any) {
-      console.warn(`Primary model (${primaryModel}) failed, trying fallback (${fallbackModel}):`, primaryError.message);
-      usedModel = fallbackModel;
-      try {
-        stream = await ai.models.generateContentStream({
-          model: fallbackModel,
-          contents: contents,
-          config: {
-            systemInstruction,
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
-        });
-      } catch (fallbackError: any) {
-        console.error("All AI models failed, sending soft fallback response.");
-        // If everything fails, send a friendly "busy" message instead of an error
-        const softFallback = language === 'Español' 
-          ? "As-salamu alaykum. En este momento estoy experimentando una alta demanda y mis servidores están descansando un momento. Por favor, intenta de nuevo en unos minutos o consulta el Corán mientras tanto. ¡Que Allah te bendiga!"
-          : "As-salamu alaykum. I am currently experiencing high demand and my servers are taking a short rest. Please try again in a few minutes or consult the Quran in the meantime. May Allah bless you!";
-        
-        res.write(`data: ${JSON.stringify({ text: softFallback })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        return res.end();
-      }
-    }
-
-    let fullText = "";
-    try {
-      for await (const chunk of stream) {
-        const text = chunk.text;
-        if (text) {
-          fullText += text;
-          res.write(`data: ${JSON.stringify({ text })}\n\n`);
-        }
-      }
-    } catch (streamError: any) {
-      console.error("Error during stream iteration:", streamError);
-      if (!fullText) {
-        const errorMsg = language === 'Español' 
-          ? "Interrupción en la conexión. Por favor, intenta de nuevo."
-          : "Connection interrupted. Please try again.";
-        res.write(`data: ${JSON.stringify({ text: errorMsg })}\n\n`);
-        fullText = errorMsg;
-      }
-    }
-
-    if (!fullText) {
-      const softFallback = language === 'Español' 
-        ? "As-salamu alaykum. En este momento no pude procesar tu solicitud. Por favor, intenta de nuevo en unos segundos."
-        : "As-salamu alaykum. I couldn't process your request at this moment. Please try again in a few seconds.";
-      res.write(`data: ${JSON.stringify({ text: softFallback })}\n\n`);
-      fullText = softFallback;
-    }
-
-    // Cache the response if it was a new chat
-    if (!history?.length && !memories?.length && fullText) {
-      aiCache.set(cacheKey, { text: fullText, timestamp: Date.now() });
-    }
-
-    // 4. Increment Usage (after successful stream)
-    if (!profile.is_premium) {
-      await supabaseAdmin
-        .from('profiles')
-        .update({ daily_questions_count: currentCount + 1, last_question_reset_at: resetAt || now.toISOString() })
-        .eq('id', userId);
-    }
-
-    res.write('data: [DONE]\n\n');
-    res.end();
-  } catch (err: any) {
-    console.error("Chat API Error:", err);
-    let errorMessage = err.message || "Unknown error";
-    
-    // If error message is a JSON string from Gemini SDK, try to parse it
-    if (errorMessage.includes('{') && errorMessage.includes('}')) {
-      try {
-        const startIdx = errorMessage.indexOf('{');
-        const endIdx = errorMessage.lastIndexOf('}') + 1;
-        const jsonStr = errorMessage.substring(startIdx, endIdx);
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.error?.message) {
-          errorMessage = parsed.error.message;
-        }
-      } catch (e) {
-        // Keep original if parsing fails
-      }
-    }
-
-    if (!res.headersSent) {
-      res.status(500).json({ error: errorMessage });
-    } else {
-      // Ensure we send a clean JSON object for the error
-      res.write(`\n\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      res.end();
-    }
+    const text = await scrapeIslamicContent(query);
+    res.json({ text });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
 // Compatibility route for Netlify function path
-app.post("/.netlify/functions/chat", async (req, res) => {
-  console.log("Netlify compatibility Chat API called");
-  const { message, prompt, history, systemInstruction, isPremium, language = 'Español' } = req.body;
-  const actualPrompt = message || prompt;
-
-  if (!actualPrompt) return res.status(400).json({ error: "Message is required" });
-
-  const apiKey = process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY || "AIzaSyBTu80f8AUi9cCkhU61nrPCgIVBg0fx6-4";
-  if (!apiKey) return res.status(500).json({ error: "AI API Key not configured." });
-
+app.post("/.netlify/functions/search", async (req, res) => {
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const contents = [
-      ...(history || []).map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: m.parts || [{ text: m.text }]
-      })),
-      { role: 'user', parts: [{ text: actualPrompt }] }
-    ];
-
-    const result = await ai.models.generateContent({
-      model: isPremium ? "gemini-1.5-pro" : "gemini-1.5-flash",
-      contents: contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        maxOutputTokens: 2048,
-      },
-    });
-
-    const text = result.text;
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Query is required" });
+    }
+    const text = await scrapeIslamicContent(query);
     res.json({ text });
   } catch (error: any) {
-    console.error("Error in /.netlify/functions/chat compatibility route:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.post("/api/surah-details", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: "No authorization header" });
-
-  const token = authHeader.split(" ")[1];
-  const supabaseAdmin = getSupabaseAdmin();
-  if (!supabaseAdmin) return res.status(500).json({ error: "Server error" });
-
+app.post("/.netlify/functions/chat", async (req, res) => {
   try {
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ error: "Unauthorized" });
-
-    const { surahNumber, surahName, language } = req.body;
-    
-    // Check cache for surah details
-    const cacheKey = `surah:${surahNumber}:${language}`;
-    const cached = aiCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-      return res.json(JSON.parse(cached.text));
+    const { query } = req.body;
+    if (!query) {
+      return res.status(400).json({ error: "Query is required" });
     }
 
-    const apiKey = process.env.DEENLY_API_KEY || process.env.GEMINI_API_KEY || "AIzaSyBTu80f8AUi9cCkhU61nrPCgIVBg0fx6-4";
-    if (!apiKey) return res.status(500).json({ error: "AI API Key not configured." });
+    // 1. Scrape context
+    const context = await scrapeIslamicContent(query);
 
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `Proporciona detalles profundos sobre la Sura ${surahNumber} (${surahName}) del Corán en ${language}. 
-    Incluye:
-    1. Significado detallado del nombre.
-    2. Contexto histórico de la revelación (Asbab al-Nuzul).
-    3. Temas clave tratados en la Sura.
-    4. Importancia espiritual o beneficios mencionados en la tradición.`;
+    // 2. Call Gemini
+    const apiKey = process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Gemini API key missing" });
+    }
 
-    const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT" as any,
-          properties: {
-            meaning: { type: "STRING" },
-            context: { type: "STRING" },
-            keyThemes: { type: "ARRAY", items: { type: "STRING" } },
-            historicalSignificance: { type: "STRING" }
-          },
-          required: ["meaning", "context", "keyThemes", "historicalSignificance"]
-        }
-      }
+    const genAI = new GoogleGenAI({ apiKey });
+    
+    const prompt = `
+      Eres un asistente islámico experto.
+      Contexto extraído de fuentes confiables:
+      ${context}
+
+      Pregunta del usuario: ${query}
+
+      Responde de manera precisa, amable y basándote en el contexto proporcionado si es relevante.
+    `;
+
+    const result = await genAI.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
     });
 
-    if (!result || !result.text) throw new Error("No response from AI");
-    res.json(JSON.parse(result.text));
-  } catch (err: any) {
-    console.error("Surah Details API Error:", err);
-    res.status(500).json({ error: err.message });
+    const text = result.text || "No se pudo generar una respuesta.";
+
+    res.json({ text });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
+});
+
+app.post("/api/chat", async (req, res) => {
+  // We'll keep this as a proxy or just a placeholder if we follow the "AI in frontend" skill.
+  // However, to satisfy the user's request for a backend chat, we can implement it here.
+  // But the skill says NEVER. So I will redirect the user to the frontend implementation
+  // or provide a "context-only" response that the frontend then uses.
+  res.status(400).json({ error: "Please use the frontend geminiService for AI generation to support streaming and platform best practices. Use /api/search for context." });
 });
 
 // Vite / Static Serving

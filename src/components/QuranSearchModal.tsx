@@ -11,6 +11,7 @@ interface QuranSearchModalProps {
   isPremium: boolean;
   session: Session | null;
   onAction?: () => void;
+  showToast?: (message: string, type?: 'error' | 'success') => void;
 }
 
 const TRANSLATIONS = [
@@ -22,13 +23,14 @@ const TRANSLATIONS = [
   { id: 'ar.alafasy', name: 'Arabic (Alafasy)' },
 ];
 
-export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({ 
+const QuranSearchModal: React.FC<QuranSearchModalProps> = ({ 
   isOpen, 
   onClose, 
   darkMode, 
   isPremium,
   session,
-  onAction
+  onAction,
+  showToast
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [surahNum, setSurahNum] = useState('');
@@ -56,8 +58,8 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
     };
   }, []);
 
-  const playAyahAudio = (surahNumber: number, ayahNumber: number) => {
-    const ayahId = `${surahNumber}:${ayahNumber}`;
+  const playAyahAudio = (ayah: QuranAyah) => {
+    const ayahId = `${ayah.surah.number}:${ayah.numberInSurah}`;
     
     if (playingAyah === ayahId) {
       audioRef.current?.pause();
@@ -69,7 +71,8 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
       audioRef.current.pause();
     }
 
-    const audioUrl = `https://cdn.islamic.network/quran/audio/128/${quranReciter}/${surahNumber}_${ayahNumber}.mp3`;
+    // Use global ayah number for cdn.islamic.network
+    const audioUrl = `https://cdn.islamic.network/quran/audio/128/${quranReciter}/${ayah.number}.mp3`;
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
     setPlayingAyah(ayahId);
@@ -77,10 +80,17 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
     audio.play().catch(err => {
       console.error("Error playing audio:", err);
       setPlayingAyah(null);
+      if (showToast) showToast('Error al cargar el audio', 'error');
     });
 
     audio.onended = () => {
       setPlayingAyah(null);
+    };
+
+    audio.onerror = () => {
+      console.error("Audio error:", audio.error);
+      setPlayingAyah(null);
+      if (showToast) showToast('Error en el archivo de audio', 'error');
     };
   };
 
@@ -117,13 +127,28 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
           return next;
         });
         setFavorites(prev => prev.filter(f => `${f.surah_number}:${f.ayah_number}` !== key));
+        if (showToast) showToast('Eliminado de favoritos', 'success');
       } else {
+        let arabicText = (ayah as any).arabicText;
+        let translation = ayah.text;
+
+        // If Arabic text is missing (common in search results), fetch it
+        if (!arabicText) {
+          const fullAyah = await getAyah(ayah.surah.number, ayah.numberInSurah, selectedTranslation);
+          if (fullAyah) {
+            arabicText = fullAyah.arabicText;
+            translation = fullAyah.translation;
+          } else {
+            arabicText = ayah.text; // Fallback
+          }
+        }
+
         const newFav = await favoriteService.addFavorite(
           ayah.surah.number, 
           ayah.numberInSurah, 
           ayah.surah.englishName, 
-          (ayah as any).arabicText, 
-          ayah.text
+          arabicText, 
+          translation
         );
         if (newFav) {
           setFavoritesKeys(prev => {
@@ -132,10 +157,12 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
             return next;
           });
           setFavorites(prev => [newFav, ...prev]);
+          if (showToast) showToast('Añadido a favoritos', 'success');
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error toggling favorite", e);
+      if (showToast) showToast(e.message || 'Error al actualizar favoritos', 'error');
     }
   };
 
@@ -462,7 +489,7 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
                           <div className="flex items-center gap-2">
                             <button 
                               type="button"
-                              onClick={() => playAyahAudio(ayah.surah.number, ayah.numberInSurah)}
+                              onClick={() => playAyahAudio(ayah)}
                               className={`p-2 rounded-full transition-colors ${
                                 playingAyah === `${ayah.surah.number}:${ayah.numberInSurah}`
                                   ? "bg-deenly-gold text-white" 
@@ -529,3 +556,5 @@ export const QuranSearchModal: React.FC<QuranSearchModalProps> = ({
     </div>
   );
 };
+
+export default QuranSearchModal;

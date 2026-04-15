@@ -36,25 +36,25 @@ import { Auth } from './components/Auth';
 import { Onboarding, type OnboardingData } from './components/Onboarding';
 import AyahOfTheDay from './components/AyahOfTheDay';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { getMuftiResponse, type ChatMessage as GeminiChatMessage } from './services/geminiService';
+import { getMuftiResponse, getIslamicContext, type ChatMessage as GeminiChatMessage } from './services/geminiService';
 import { ThinkingIndicator } from './components/ThinkingIndicator';
 import { chatService, type Chat, type Message as DbMessage } from './services/chatService';
 import ReactMarkdown from 'react-markdown';
 import type { Session } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { QuranSearchModal } from './components/QuranSearchModal';
-import { SurahLibrary } from './components/SurahLibrary';
-import { ProfileModal } from './components/ProfileModal';
-import { SettingsModal } from './components/SettingsModal';
-import { AboutModal } from './components/AboutModal';
-import { LegalModal } from './components/LegalModal';
-import { PlansModal } from './components/PlansModal';
-import { HadithModal } from './components/HadithModal';
-import { PrayerTimesModal } from './components/PrayerTimesModal';
-import { AchievementsModal } from './components/AchievementsModal';
-import { JournalModal } from './components/JournalModal';
-import { ProgressModal } from './components/ProgressModal';
+import QuranSearchModal from './components/QuranSearchModal';
+import SurahLibrary from './components/SurahLibrary';
+import ProfileModal from './components/ProfileModal';
+import SettingsModal from './components/SettingsModal';
+import AboutModal from './components/AboutModal';
+import LegalModal from './components/LegalModal';
+import PlansModal from './components/PlansModal';
+import HadithModal from './components/HadithModal';
+import PrayerTimesModal from './components/PrayerTimesModal';
+import AchievementsModal from './components/AchievementsModal';
+import JournalModal from './components/JournalModal';
+import ProgressModal from './components/ProgressModal';
 
 interface Message {
   id: string;
@@ -206,13 +206,26 @@ export default function App() {
     const query = new URLSearchParams(window.location.search);
     if (query.get('success')) {
       showToast(language === 'Español' ? '¡Suscripción activada con éxito!' : 'Subscription activated successfully!', 'success');
-      // Refresh session to get updated metadata
-      supabase.auth.refreshSession().catch(err => console.error('Error refreshing session:', err));
+      
+      // Proactively update local state for immediate feedback
+      setIsPremium(true);
+      
+      // Refresh usage and session to get updated data from server
+      if (session?.user?.id) {
+        fetchUsage(session.user.id);
+        supabase.auth.refreshSession().catch(err => console.error('Error refreshing session:', err));
+      }
+      
+      // Clean up URL parameters without refreshing the page
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
     }
     if (query.get('canceled')) {
       showToast(language === 'Español' ? 'El proceso de pago fue cancelado.' : 'Payment process was canceled.', 'error');
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
     }
-  }, []);
+  }, [session?.user?.id, language]);
 
   const fetchUsage = async (userId: string) => {
     try {
@@ -221,8 +234,9 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
       });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
-      if (data.count !== undefined) {
+      if (data && data.count !== undefined) {
         setUsageCount(data.count);
         setUsageLimit(data.limit);
         setIsPremium(data.isPremium);
@@ -1729,14 +1743,6 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: session.user.id }),
-        }).catch(err => {
-          console.warn('Initial usage increment fetch failed, retrying...', err);
-          // Simple retry
-          return fetch('/api/usage/increment', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: session.user.id }),
-          });
         });
         
         if (usageResponse.status === 403) {
@@ -1748,6 +1754,10 @@ export default function App() {
           return;
         }
         
+        if (!usageResponse.ok) {
+          throw new Error(`Usage API error: ${usageResponse.status}`);
+        }
+
         const usageData = await usageResponse.json();
         if (usageData.count !== undefined) {
           setUsageCount(usageData.count);
@@ -1758,6 +1768,7 @@ export default function App() {
         }
       } catch (error) {
         console.error('Error incrementing usage:', error);
+        // We don't block the chat if usage increment fails due to network
       }
     }
 
@@ -1832,6 +1843,9 @@ export default function App() {
       
       console.log('Calling getMuftiResponse with input:', input);
       
+      // Fetch Islamic context from backend scraping
+      const islamicContext = await getIslamicContext(input);
+      
       const streamingId = (Date.now() + 2).toString();
       let accumulatedText = "";
 
@@ -1855,7 +1869,8 @@ export default function App() {
               return [...prev, { id: streamingId, role: 'assistant', text: accumulatedText, timestamp: new Date() }];
             }
           });
-        }
+        },
+        islamicContext
       );
       
       if (!response || response.trim() === "") {
@@ -2619,6 +2634,7 @@ export default function App() {
           isPremium={isPremium}
           session={session}
           onAction={() => updateStats('quranSearches')}
+          showToast={showToast}
         />
 
         {/* Surah Library Modal */}
@@ -2720,18 +2736,6 @@ export default function App() {
           onClose={closeModal}
           type={legalModalType}
           darkMode={darkMode}
-          t={t}
-        />
-
-        {/* Plans Modal */}
-        <PlansModal
-          isOpen={activeModal === 'plans'}
-          onClose={closeModal}
-          darkMode={darkMode}
-          isPremium={isPremium}
-          onUpgrade={handleUpgrade}
-          onManage={handleManageSubscription}
-          showToast={showToast}
           t={t}
         />
       </div>

@@ -20,7 +20,7 @@ interface JournalEntry {
   created_at: string;
 }
 
-export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, darkMode, userId, t }) => {
+const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, darkMode, userId, t }) => {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [newEntry, setNewEntry] = useState('');
   const [mood, setMood] = useState('blessed');
@@ -303,3 +303,5 @@ export const JournalModal: React.FC<JournalModalProps> = ({ isOpen, onClose, dar
     </div>
   );
 };
+
+export default JournalModal;

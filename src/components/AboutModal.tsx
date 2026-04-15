@@ -10,7 +10,7 @@ interface AboutModalProps {
   t: any;
 }
 
-export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose, onOpenLegal, darkMode, t }) => {
+const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose, onOpenLegal, darkMode, t }) => {
   if (!isOpen) return null;
 
   return (
@@ -124,3 +124,5 @@ export const AboutModal: React.FC<AboutModalProps> = ({ isOpen, onClose, onOpenL
     </div>
   );
 };
+
+export default AboutModal;

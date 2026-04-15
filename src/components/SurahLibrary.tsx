@@ -46,7 +46,7 @@ interface SurahLibraryProps {
   onAction?: () => void;
 }
 
-export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, darkMode, session, language, showToast, onAction }) => {
+const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, darkMode, session, language, showToast, onAction }) => {
   const [surahs, setSurahs] = useState<Surah[]>(SURAHS_FALLBACK);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSurah, setSelectedSurah] = useState<SurahDetail | null>(null);
@@ -72,12 +72,14 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
     const fetchAllSurahs = async () => {
       try {
         const response = await fetch('https://api.alquran.cloud/v1/surah');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         if (data.code === 200) {
           setSurahs(data.data);
         }
       } catch (error) {
         console.error("Error fetching all surahs:", error);
+        // Fallback to SURAHS_FALLBACK is already the initial state
       }
     };
     fetchAllSurahs();
@@ -221,6 +223,7 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
 
     try {
       const response = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/${quranReciter}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       
       if (data.code === 200 && data.data.ayahs && sessionId === currentSessionIdRef.current) {
@@ -487,9 +490,9 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
       const edition = language === 'Español' ? 'es.cortes' : 
                       language === 'English' ? 'en.sahih' : 
                       language === 'Français' ? 'fr.hamidullah' : 
-                      language === 'Indonesia' ? 'id.indonesian' :
+                      language === 'Indonesian' ? 'id.indonesian' :
                       language === 'Deutsch' ? 'de.aburida' :
-                      'ar.alafasy';
+                      'es.cortes'; // Default to Spanish translation instead of reciter
       const data = await getSurah(surahNum, edition);
       if (data && data.ayahs) {
         setAyahs(data.ayahs);
@@ -894,3 +897,5 @@ export const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, dar
   </div>
 );
 };
+
+export default SurahLibrary;

@@ -123,7 +123,7 @@ const SettingItem = ({
   </div>
 );
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ 
+const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, 
   onClose, 
   onNavigate,
@@ -1637,3 +1637,5 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
   );
 };
+
+export default SettingsModal;

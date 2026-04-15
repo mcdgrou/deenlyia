@@ -1,9 +1,13 @@
 import { supabase } from '../lib/supabase';
+import { GoogleGenAI, Type } from "@google/genai";
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   parts: { text: string }[];
 }
+
+// Initialize Gemini AI
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Helper for retrying with exponential backoff
 const withRetry = async (fn: () => Promise<any>, maxRetries = 3, initialDelay = 2000) => {
@@ -33,6 +37,22 @@ const withRetry = async (fn: () => Promise<any>, maxRetries = 3, initialDelay = 
   throw lastError;
 };
 
+export const getIslamicContext = async (query: string): Promise<string> => {
+  try {
+    const response = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    if (!response.ok) return "";
+    const data = await response.json();
+    return data.text || "";
+  } catch (error) {
+    console.error("Error fetching Islamic context:", error);
+    return "";
+  }
+};
+
 export const getMuftiResponse = async (
   prompt: string, 
   history: ChatMessage[] = [], 
@@ -40,7 +60,8 @@ export const getMuftiResponse = async (
   isPremium: boolean = false, 
   memories: string[] = [],
   language: string = 'Español',
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void,
+  context: string = ""
 ) => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -58,6 +79,10 @@ export const getMuftiResponse = async (
 
     const memoryContext = memories?.length > 0 
       ? `\n\nINFORMACIÓN QUE RECUERDAS SOBRE EL USUARIO:\n${memories.map((m: string) => `- ${m}`).join('\n')}`
+      : "";
+
+    const islamicContext = context 
+      ? `\n\nUSA ESTA INFORMACIÓN ISLÁMICA AUTÉNTICA COMO CONTEXTO PRINCIPAL PARA TU RESPUESTA:\n${context}\n\nResponde basándote en esta información y en el conocimiento auténtico del Corán y la Sunnah.`
       : "";
 
     const currentDate = new Date().toLocaleDateString('es-ES', { 
@@ -91,6 +116,7 @@ ${onboardingInfo}
 - EVENTOS ACTUALES: Investiga siempre fechas de Eid, Ramadán, etc., usando Google Search antes de responder.
 - Básate en Corán y Hadices auténticos (Bujari, Muslim). Respeta las 4 escuelas jurídicas.
 - Si no sabes algo, di con humildad que solo Allah posee el conocimiento absoluto.
+${islamicContext}
 
 5. ESTRUCTURA:
 1. Saludo cálido.
@@ -100,196 +126,98 @@ ${onboardingInfo}
 ${premiumContext}
 ${memoryContext}`;
 
-    const res = await withRetry(async () => {
-      // Use the Netlify function as requested by the user
-      const response = await fetch('/.netlify/functions/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          message: prompt, // Netlify function expects 'message'
-          prompt,
-          history,
+    // Call Gemini API directly from frontend
+    const primaryModel = isPremium ? "gemini-3.1-pro-preview" : "gemini-3-flash-preview";
+    const fallbackModel = "gemini-3-flash-preview";
+
+    const contents = [
+      ...history.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: m.parts
+      })),
+      { role: 'user', parts: [{ text: prompt }] }
+    ];
+
+    let fullText = "";
+    
+    try {
+      const stream = await ai.models.generateContentStream({
+        model: primaryModel,
+        contents,
+        config: {
           systemInstruction,
-          isPremium,
-          memories,
-          language
-        })
+          temperature: isPremium ? 0.8 : 0.7,
+        }
       });
 
-      if (!response.ok) {
-        let errorMessage = "Error en la respuesta del servidor";
-        const responseClone = response.clone();
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (e) {
-          // If not JSON, get text from the clone
-          try {
-            const text = await responseClone.text();
-            if (text) errorMessage = text;
-          } catch (textError) {
-            // Fallback to default
-          }
+      for await (const chunk of stream) {
+        if (chunk.text) {
+          fullText += chunk.text;
+          if (onChunk) onChunk(chunk.text);
         }
-        throw new Error(errorMessage);
       }
-      return response;
-    });
-
-    const contentType = res.headers.get('content-type');
-    
-    // If it's a standard JSON response (from our new Netlify function)
-    if (contentType && contentType.includes('application/json')) {
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        if (onChunk) onChunk(data.text);
-        return data.text;
-      }
-    }
-
-    // Fallback for streaming (if the endpoint still returns a stream)
-    if (!res.body) throw new Error("No response body");
-
-    if (!contentType || !contentType.includes('text/event-stream')) {
-      const text = await res.text();
-      try {
-        const parsed = JSON.parse(text);
-        if (parsed.error) throw new Error(parsed.error);
-        if (parsed.text) {
-          if (onChunk) onChunk(parsed.text);
-          return parsed.text;
+    } catch (primaryError: any) {
+      console.warn(`Primary model (${primaryModel}) failed, trying fallback (${fallbackModel}):`, primaryError.message);
+      
+      const stream = await ai.models.generateContentStream({
+        model: fallbackModel,
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
         }
-        return text;
-      } catch (e) {
-        throw new Error(text || "Respuesta inesperada del servidor");
-      }
-    }
+      });
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = "";
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) continue;
-        
-        // Handle lines that might not start with 'data:' but are part of the stream
-        // or handle multiple 'data:' prefixes
-        let data = trimmedLine;
-        if (trimmedLine.startsWith('data:')) {
-          data = trimmedLine.replace(/^(data:\s*)+/i, '').trim();
-        } else if (!trimmedLine.startsWith('{')) {
-          // Skip lines that are not data and not JSON
-          continue;
-        }
-
-        if (data === '[DONE]') continue;
-        
-        // Safety check for multiple JSON objects in one line (glued JSON)
-        // This happens sometimes in high-speed streams
-        const jsonObjects = data.split('}{').map((obj, index, array) => {
-          if (array.length === 1) return obj;
-          if (index === 0) return obj + '}';
-          if (index === array.length - 1) return '{' + obj;
-          return '{' + obj + '}';
-        });
-
-        for (const jsonObj of jsonObjects) {
-          try {
-            // Final check: if it still starts with data:, something is wrong
-            let cleanData = jsonObj.trim();
-            if (cleanData.startsWith('data:')) {
-              cleanData = cleanData.replace(/^(data:\s*)+/i, '').trim();
-            }
-            
-            if (!cleanData || cleanData === '[DONE]') continue;
-            
-            // If it doesn't start with { or [, it's definitely not JSON
-            if (!cleanData.startsWith('{') && !cleanData.startsWith('[')) {
-              console.warn("Skipping non-JSON chunk:", cleanData);
-              continue;
-            }
-
-            const parsed = JSON.parse(cleanData);
-            if (parsed.error) {
-              const streamError = new Error(typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error));
-              throw streamError;
-            }
-            if (parsed.text) {
-              fullText += parsed.text;
-              if (onChunk) onChunk(parsed.text);
-            }
-          } catch (e: any) {
-            if (e.message && !e.message.includes('JSON')) {
-              throw e;
-            }
-            console.error("Error parsing stream chunk:", e, "Data string:", jsonObj);
-          }
+      fullText = ""; // Reset for fallback
+      for await (const chunk of stream) {
+        if (chunk.text) {
+          fullText += chunk.text;
+          if (onChunk) onChunk(chunk.text);
         }
       }
     }
 
     if (!fullText) {
-      throw new Error("El asistente no pudo generar una respuesta en este momento. Por favor, intenta de nuevo en unos segundos.");
+      throw new Error("El asistente no pudo generar una respuesta en este momento.");
     }
 
     return fullText;
   } catch (error: any) {
-    console.error(`Error calling Chat API:`, error);
+    console.error(`Error calling Gemini API:`, error);
     throw error;
   }
 };
 
 export const getSurahDetails = async (surahNumber: number, surahName: string, language: string) => {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error("Debes iniciar sesión.");
+    const prompt = `Proporciona detalles profundos sobre la Sura ${surahNumber} (${surahName}) del Corán en ${language}. 
+    Incluye:
+    1. Significado detallado del nombre.
+    2. Contexto histórico de la revelación (Asbab al-Nuzul).
+    3. Temas clave tratados en la Sura.
+    4. Importancia espiritual o beneficios mencionados en la tradición.`;
 
     const response = await withRetry(async () => {
-      const res = await fetch('/api/surah-details', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          surahNumber,
-          surahName,
-          language
-        })
-      });
-
-      if (!res.ok) {
-        let errorMessage = "Error fetching surah details";
-        const resClone = res.clone();
-        try {
-          const errorData = await res.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (e) {
-          try {
-            const text = await resClone.text();
-            if (text) errorMessage = text;
-          } catch (textError) {
-            // Fallback
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              meaning: { type: Type.STRING },
+              context: { type: Type.STRING },
+              keyThemes: { type: Type.ARRAY, items: { type: Type.STRING } },
+              historicalSignificance: { type: Type.STRING }
+            },
+            required: ["meaning", "context", "keyThemes", "historicalSignificance"]
           }
         }
-        throw new Error(errorMessage);
-      }
+      });
 
-      return await res.json();
+      if (!result || !result.text) throw new Error("No response from AI");
+      return JSON.parse(result.text);
     });
 
     return response;

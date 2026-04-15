@@ -13,7 +13,7 @@ interface HadithModalProps {
 
 type ViewMode = 'collections' | 'narrators' | 'topics';
 
-export const HadithModal: React.FC<HadithModalProps> = ({ isOpen, onClose, darkMode, t, onAction }) => {
+const HadithModal: React.FC<HadithModalProps> = ({ isOpen, onClose, darkMode, t, onAction }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('collections');
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
@@ -969,3 +969,5 @@ export const HadithModal: React.FC<HadithModalProps> = ({ isOpen, onClose, darkM
     </div>
   );
 };
+
+export default HadithModal;

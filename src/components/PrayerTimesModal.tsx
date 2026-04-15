@@ -11,7 +11,7 @@ interface PrayerTimesModalProps {
   showToast?: (message: string, type?: 'error' | 'success') => void;
 }
 
-export const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, darkMode, language, t, showToast }) => {
+const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, darkMode, language, t, showToast }) => {
   const [location, setLocation] = useState({ city: 'Madrid', lat: 40.4168, lng: -3.7038 });
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimes | null>(null);
   const [nextPrayer, setNextPrayer] = useState<{ name: string; time: Date; countdown: string } | null>(null);
@@ -272,3 +272,5 @@ export const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onCl
     </div>
   );
 };
+
+export default PrayerTimesModal;

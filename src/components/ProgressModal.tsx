@@ -20,7 +20,7 @@ interface TopicProgress {
   updated_at: string;
 }
 
-export const ProgressModal: React.FC<ProgressModalProps> = ({ isOpen, onClose, darkMode, userId, t, isPremium }) => {
+const ProgressModal: React.FC<ProgressModalProps> = ({ isOpen, onClose, darkMode, userId, t, isPremium }) => {
   const [progress, setProgress] = useState<TopicProgress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -258,3 +258,5 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({ isOpen, onClose, d
     </div>
   );
 };
+
+export default ProgressModal;

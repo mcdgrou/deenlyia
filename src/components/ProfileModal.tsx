@@ -16,7 +16,7 @@ interface ProfileModalProps {
   language: string;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onNavigate, session, darkMode, isPremium, t, language }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onNavigate, session, darkMode, isPremium, t, language }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'favorites' | 'progress' | 'settings'>('profile');
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [loading, setLoading] = useState(false);
@@ -627,3 +627,5 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onN
     </div>
   );
 };
+
+export default ProfileModal;
