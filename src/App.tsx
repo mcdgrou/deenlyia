@@ -178,6 +178,19 @@ export default function App() {
   const [language, setLanguage] = useState('Español');
   const [dateFormat, setDateFormat] = useState('DD/MM/YYYY');
   const [isPremium, setIsPremium] = useState(false);
+  
+  // Adhan & Location Settings
+  const [location, setLocation] = useState({ city: 'Madrid, España', lat: 40.4168, lng: -3.7038 });
+  const [calculationMethod, setCalculationMethod] = useState('MuslimWorldLeague');
+  const [adhanSound, setAdhanSound] = useState('Makkah');
+  const [reminder10Min, setReminder10Min] = useState(true);
+  const [adhanNotifications, setAdhanNotifications] = useState<any>({
+    fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true
+  });
+  const [adhanReminders, setAdhanReminders] = useState<any>({
+    fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true
+  });
+
   const [usageCount, setUsageCount] = useState(0);
   const [usageLimit, setUsageLimit] = useState(15);
   const [memories, setMemories] = useState<string[]>([]);
@@ -336,7 +349,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      loadSessions();
+      loadSessions().catch(err => console.error('Error loading sessions (no supabase):', err));
       setIsAuthReady(true);
       return;
     }
@@ -368,6 +381,26 @@ export default function App() {
         }
         if (session.user.user_metadata?.settings?.dateFormat) {
           setDateFormat(session.user.user_metadata.settings.dateFormat);
+        }
+        
+        // Load Adhan settings
+        if (session.user.user_metadata?.settings?.location) {
+          setLocation(session.user.user_metadata.settings.location);
+        }
+        if (session.user.user_metadata?.settings?.calculationMethod) {
+          setCalculationMethod(session.user.user_metadata.settings.calculationMethod);
+        }
+        if (session.user.user_metadata?.settings?.adhanSound) {
+          setAdhanSound(session.user.user_metadata.settings.adhanSound);
+        }
+        if (session.user.user_metadata?.settings?.reminder10Min !== undefined) {
+          setReminder10Min(session.user.user_metadata.settings.reminder10Min);
+        }
+        if (session.user.user_metadata?.settings?.adhanNotifications) {
+          setAdhanNotifications(session.user.user_metadata.settings.adhanNotifications);
+        }
+        if (session.user.user_metadata?.settings?.adhanReminders) {
+          setAdhanReminders(session.user.user_metadata.settings.adhanReminders);
         }
       }
     }).catch(err => {
@@ -416,6 +449,26 @@ export default function App() {
           if (session?.user?.user_metadata?.settings?.dateFormat) {
             setDateFormat(session.user.user_metadata.settings.dateFormat);
           }
+          
+          // Load Adhan settings
+          if (session?.user?.user_metadata?.settings?.location) {
+            setLocation(session.user.user_metadata.settings.location);
+          }
+          if (session?.user?.user_metadata?.settings?.calculationMethod) {
+            setCalculationMethod(session.user.user_metadata.settings.calculationMethod);
+          }
+          if (session?.user?.user_metadata?.settings?.adhanSound) {
+            setAdhanSound(session.user.user_metadata.settings.adhanSound);
+          }
+          if (session?.user?.user_metadata?.settings?.reminder10Min !== undefined) {
+            setReminder10Min(session.user.user_metadata.settings.reminder10Min);
+          }
+          if (session?.user?.user_metadata?.settings?.adhanNotifications) {
+            setAdhanNotifications(session.user.user_metadata.settings.adhanNotifications);
+          }
+          if (session?.user?.user_metadata?.settings?.adhanReminders) {
+            setAdhanReminders(session.user.user_metadata.settings.adhanReminders);
+          }
         })
       : { data: { subscription: { unsubscribe: () => {} } } };
 
@@ -457,7 +510,7 @@ export default function App() {
     }
     
     // Load sessions from Supabase or LocalStorage when session changes
-    loadSessions(!!currentSessionId);
+    loadSessions(!!currentSessionId).catch(err => console.error('Error loading sessions on change:', err));
 
     return () => clearTimeout(timer);
   }, [session, language]);
@@ -1841,10 +1894,11 @@ export default function App() {
         userMemories = memData?.map(m => m.memory_text) || [];
       }
       
-      console.log('Calling getMuftiResponse with input:', input);
+      console.log('Calling getMuftiResponse with input:', input, 'isPremium:', isPremium, 'language:', language);
       
       // Fetch Islamic context from backend scraping
       const islamicContext = await getIslamicContext(input);
+      console.log('Islamic context fetched, length:', islamicContext.length);
       
       const streamingId = (Date.now() + 2).toString();
       let accumulatedText = "";
@@ -2673,6 +2727,22 @@ export default function App() {
           setTheme={setTheme}
           cardStyle={cardStyle}
           setCardStyle={setCardStyle}
+          language={language}
+          setLanguage={setLanguage}
+          dateFormat={dateFormat}
+          setDateFormat={setDateFormat}
+          location={location}
+          setLocation={setLocation}
+          calculationMethod={calculationMethod}
+          setCalculationMethod={setCalculationMethod}
+          adhanSound={adhanSound}
+          setAdhanSound={setAdhanSound}
+          reminder10Min={reminder10Min}
+          setReminder10Min={setReminder10Min}
+          adhanNotifications={adhanNotifications}
+          setAdhanNotifications={setAdhanNotifications}
+          adhanReminders={adhanReminders}
+          setAdhanReminders={setAdhanReminders}
           isPremium={isPremium}
           session={session}
           onOpenLegal={openLegalModal}
@@ -2702,6 +2772,9 @@ export default function App() {
           onClose={closeModal}
           darkMode={darkMode}
           language={language}
+          location={location}
+          setLocation={setLocation}
+          calculationMethod={calculationMethod}
           t={t}
           showToast={showToast}
         />

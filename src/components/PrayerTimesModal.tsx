@@ -7,12 +7,24 @@ interface PrayerTimesModalProps {
   onClose: () => void;
   darkMode: boolean;
   language: string;
+  location: { city: string, lat: number, lng: number };
+  setLocation: (val: { city: string, lat: number, lng: number }) => void;
+  calculationMethod: string;
   t: any;
   showToast?: (message: string, type?: 'error' | 'success') => void;
 }
 
-const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, darkMode, language, t, showToast }) => {
-  const [location, setLocation] = useState({ city: 'Madrid', lat: 40.4168, lng: -3.7038 });
+const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  darkMode, 
+  language, 
+  location: propsLocation,
+  setLocation: propsSetLocation,
+  calculationMethod: propsMethod,
+  t, 
+  showToast 
+}) => {
   const [prayerTimes, setPrayerTimes] = useState<PrayerTimes | null>(null);
   const [nextPrayer, setNextPrayer] = useState<{ name: string; time: Date; countdown: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,7 +36,7 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
     if (isOpen) {
       calculatePrayerTimes();
     }
-  }, [isOpen, location]);
+  }, [isOpen, propsLocation, propsMethod]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -36,10 +48,26 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
   }, [prayerTimes]);
 
   const calculatePrayerTimes = () => {
-    const coords = new Coordinates(location.lat, location.lng);
+    const coords = new Coordinates(propsLocation.lat, propsLocation.lng);
     const date = new Date();
-    const params = CalculationMethod.MuslimWorldLeague();
-    const times = new PrayerTimes(coords, date, params);
+    
+    let method;
+    switch (propsMethod) {
+      case 'MWL': method = CalculationMethod.MuslimWorldLeague(); break;
+      case 'ISNA': method = CalculationMethod.NorthAmerica(); break;
+      case 'Egypt': method = CalculationMethod.Egyptian(); break;
+      case 'Makkah': method = CalculationMethod.UmmAlQura(); break;
+      case 'Karachi': method = CalculationMethod.Karachi(); break;
+      case 'Tehran': method = CalculationMethod.Tehran(); break;
+      case 'Dubai': method = CalculationMethod.Dubai(); break;
+      case 'Kuwait': method = CalculationMethod.Kuwait(); break;
+      case 'Qatar': method = CalculationMethod.Qatar(); break;
+      case 'Singapore': method = CalculationMethod.Singapore(); break;
+      case 'Turkey': method = CalculationMethod.Turkey(); break;
+      default: method = CalculationMethod.MuslimWorldLeague();
+    }
+
+    const times = new PrayerTimes(coords, date, method);
     setPrayerTimes(times);
     updateNextPrayer(times);
   };
@@ -73,12 +101,12 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
           const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
           const data = await response.json();
           const city = data.address.city || data.address.town || data.address.village || data.address.state || 'Ubicación detectada';
-          setLocation({ city, lat: latitude, lng: longitude });
+          propsSetLocation({ city, lat: latitude, lng: longitude });
           setIsEditingLocation(false);
         } catch (error: any) {
           console.error('Error geocoding:', error);
           if (showToast) showToast(language === 'Español' ? "Error al obtener dirección" : "Error getting address", 'error');
-          setLocation({ ...location, lat: latitude, lng: longitude });
+          propsSetLocation({ city: 'Ubicación detectada', lat: latitude, lng: longitude });
         } finally {
           setIsUpdating(false);
         }
@@ -102,7 +130,7 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
       if (data && data.length > 0) {
         const { lat, lon, display_name } = data[0];
         const cityName = display_name.split(',')[0];
-        setLocation({ city: cityName, lat: parseFloat(lat), lng: parseFloat(lon) });
+        propsSetLocation({ city: cityName, lat: parseFloat(lat), lng: parseFloat(lon) });
         setIsEditingLocation(false);
       }
     } catch (error) {
@@ -157,7 +185,7 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
                 </div>
                 <div>
                   <p className="text-[10px] font-bold text-deenly-gold uppercase tracking-widest">{t.location || 'Ubicación'}</p>
-                  <h4 className="text-sm font-bold">{location.city}</h4>
+                  <h4 className="text-sm font-bold">{propsLocation.city}</h4>
                 </div>
               </div>
               <button 
@@ -209,7 +237,7 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({ isOpen, onClose, da
                   <button 
                     onClick={() => {
                       setIsEditingLocation(true);
-                      setLocationInput(location.city);
+                      setLocationInput(propsLocation.city);
                     }}
                     className={`w-full py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-colors ${
                       darkMode ? 'border-deenly-gold/20 hover:bg-white/5' : 'border-deenly-gold/10 hover:bg-black/5'

@@ -24,6 +24,22 @@ interface SettingsModalProps {
   setTheme: (val: 'default' | 'emerald' | 'midnight' | 'sunset') => void;
   cardStyle: 'compact' | 'wide';
   setCardStyle: (val: 'compact' | 'wide') => void;
+  language: string;
+  setLanguage: (val: string) => void;
+  dateFormat: string;
+  setDateFormat: (val: string) => void;
+  location: { city: string, lat: number, lng: number };
+  setLocation: (val: { city: string, lat: number, lng: number }) => void;
+  calculationMethod: string;
+  setCalculationMethod: (val: string) => void;
+  adhanSound: string;
+  setAdhanSound: (val: string) => void;
+  reminder10Min: boolean;
+  setReminder10Min: (val: boolean) => void;
+  adhanNotifications: any;
+  setAdhanNotifications: (val: any) => void;
+  adhanReminders: any;
+  setAdhanReminders: (val: any) => void;
   isPremium: boolean;
   session: Session | null;
   onOpenLegal: (type: 'privacy' | 'terms' | 'premium') => void;
@@ -128,55 +144,50 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose, 
   onNavigate,
   darkMode, 
-  setDarkMode,
-  fontSize,
-  setFontSize,
-  theme,
-  setTheme,
-  cardStyle,
+  setDarkMode, 
+  fontSize, 
+  setFontSize, 
+  theme, 
+  setTheme, 
+  cardStyle, 
   setCardStyle,
+  language,
+  setLanguage,
+  dateFormat,
+  setDateFormat,
+  location,
+  setLocation,
+  calculationMethod,
+  setCalculationMethod,
+  adhanSound,
+  setAdhanSound,
+  reminder10Min,
+  setReminder10Min,
+  adhanNotifications,
+  setAdhanNotifications,
+  adhanReminders,
+  setAdhanReminders,
   isPremium,
   session,
   onOpenLegal,
   showToast
 }) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [notifications, setNotifications] = useState(true);
-  const [islamicReminders, setIslamicReminders] = useState(true);
-  const [quranTranslation, setQuranTranslation] = useState('Español');
-  const [quranReciter, setQuranReciter] = useState('ar.alafasy');
-  const [quranFontSize, setQuranFontSize] = useState('24px');
-  const [language, setLanguage] = useState('Español');
-  const [gender, setGender] = useState<'Hermano' | 'Hermana'>('Hermano');
-  const [dateFormat, setDateFormat] = useState('DD/MM/YYYY');
-  const [transliteration, setTransliteration] = useState(true);
-  const [updates, setUpdates] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [editingField, setEditingField] = useState<'email' | 'password' | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [isUpdating, setIsUpdating] = useState(false);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
   const [locationInput, setLocationInput] = useState('');
-  const [calculationMethod, setCalculationMethod] = useState('MWL');
-  const [adhanSound, setAdhanSound] = useState('Makkah');
-  const [location, setLocation] = useState<{ lat: number; lng: number; city: string }>({ lat: 41.9794, lng: 2.8214, city: 'Girona, Spain' });
-  const [autoLocation, setAutoLocation] = useState(true);
-  const [reminder10Min, setReminder10Min] = useState(false);
-  const [prayerTimes, setPrayerTimes] = useState<any>(null);
+  const [prayerTimes, setPrayerTimes] = useState<PrayerTimes | null>(null);
   const [nextPrayer, setNextPrayer] = useState<{ name: string; time: string; countdown: string } | null>(null);
-  const [adhanNotifications, setAdhanNotifications] = useState({
-    fajr: true,
-    dhuhr: true,
-    asr: true,
-    maghrib: true,
-    isha: true
-  });
-  const [adhanReminders, setAdhanReminders] = useState({
-    fajr: false,
-    dhuhr: false,
-    asr: false,
-    maghrib: false,
-    isha: false
-  });
+  const [gender, setGender] = useState(session?.user?.user_metadata?.settings?.gender || 'Hermano');
+  const [transliteration, setTransliteration] = useState(session?.user?.user_metadata?.settings?.transliteration !== false);
+  const [notifications, setNotifications] = useState(session?.user?.user_metadata?.settings?.notifications !== false);
+  const [islamicReminders, setIslamicReminders] = useState(session?.user?.user_metadata?.settings?.islamicReminders !== false);
+  const [updates, setUpdates] = useState(session?.user?.user_metadata?.settings?.updates !== false);
+  const [quranTranslation, setQuranTranslation] = useState(session?.user?.user_metadata?.settings?.quranTranslation || 'Español');
+  const [quranReciter, setQuranReciter] = useState(session?.user?.user_metadata?.settings?.quranReciter || 'ar.alafasy');
+  const [quranFontSize, setQuranFontSize] = useState(session?.user?.user_metadata?.settings?.quranFontSize || '24px');
 
   const calcMethods = [
     { id: 'MWL', name: 'Muslim World League' },
@@ -658,26 +669,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen && session?.user?.user_metadata?.settings) {
       const s = session.user.user_metadata.settings;
+      // Synced settings (handled by props, but we update them here to be sure)
       if (s.fontSize) setFontSize(s.fontSize);
       if (s.theme) setTheme(s.theme);
       if (s.cardStyle) setCardStyle(s.cardStyle);
+      if (s.language) setLanguage(s.language);
+      if (s.dateFormat) setDateFormat(s.dateFormat);
+      if (s.calculationMethod) setCalculationMethod(s.calculationMethod);
+      if (s.adhanSound) setAdhanSound(s.adhanSound);
+      if (s.location) setLocation(s.location);
+      if (s.reminder10Min !== undefined) setReminder10Min(s.reminder10Min);
+      if (s.adhanNotifications) setAdhanNotifications(s.adhanNotifications);
+      if (s.adhanReminders) setAdhanReminders(s.adhanReminders);
+
+      // Local state settings
       if (s.notifications !== undefined) setNotifications(s.notifications);
       if (s.islamicReminders !== undefined) setIslamicReminders(s.islamicReminders);
       if (s.quranTranslation) setQuranTranslation(s.quranTranslation);
       if (s.quranReciter) setQuranReciter(s.quranReciter);
       if (s.quranFontSize) setQuranFontSize(s.quranFontSize);
-      if (s.language) setLanguage(s.language);
-      if (s.dateFormat) setDateFormat(s.dateFormat);
       if (s.transliteration !== undefined) setTransliteration(s.transliteration);
       if (s.gender) setGender(s.gender);
       if (s.updates !== undefined) setUpdates(s.updates);
-      if (s.calculationMethod) setCalculationMethod(s.calculationMethod);
-      if (s.adhanSound) setAdhanSound(s.adhanSound);
-      if (s.location) setLocation(s.location);
-      if (s.autoLocation !== undefined) setAutoLocation(s.autoLocation);
-      if (s.reminder10Min !== undefined) setReminder10Min(s.reminder10Min);
-      if (s.adhanNotifications) setAdhanNotifications(s.adhanNotifications);
-      if (s.adhanReminders) setAdhanReminders(s.adhanReminders);
     }
   }, [isOpen]); // Only reload when modal opens
 

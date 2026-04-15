@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as cheerio from "cheerio";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // ES Module fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -351,13 +351,18 @@ app.post("/api/usage/increment", async (req, res) => {
 
 app.post("/api/search", async (req, res) => {
   try {
-    const { query } = req.body;
+    console.log("POST /api/search body:", req.body);
+    const query = req.body.query || req.body.message || req.body.prompt;
+    
     if (!query) {
+      console.warn("Search request missing query");
       return res.status(400).json({ error: "Query is required" });
     }
+    
     const text = await scrapeIslamicContent(query);
     res.json({ text });
   } catch (error: any) {
+    console.error("Error in /api/search:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -365,21 +370,178 @@ app.post("/api/search", async (req, res) => {
 // Compatibility route for Netlify function path
 app.post("/.netlify/functions/search", async (req, res) => {
   try {
-    const { query } = req.body;
+    console.log("POST /.netlify/functions/search body:", req.body);
+    const query = req.body.query || req.body.message || req.body.prompt;
+    
     if (!query) {
+      console.warn("Search Netlify request missing query");
       return res.status(400).json({ error: "Query is required" });
     }
+    
     const text = await scrapeIslamicContent(query);
     res.json({ text });
   } catch (error: any) {
+    console.error("Error in /.netlify/functions/search:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
+app.post("/api/chat", async (req, res) => {
+  try {
+    console.log(">>> [API CHAT] Request received at:", new Date().toISOString());
+    console.log(">>> [API CHAT] Body keys:", Object.keys(req.body));
+    
+    const { history, isPremium, language, query: reqQuery } = req.body;
+    const query = reqQuery || req.body.message || req.body.prompt;
+
+    if (!query) {
+      console.warn(">>> [API CHAT] Missing query in request body");
+      return res.status(400).json({ error: "Query is required" });
+    }
+
+    console.log(`>>> [API CHAT] Processing query: "${query.substring(0, 50)}..."`);
+    console.log(`>>> [API CHAT] Premium: ${!!isPremium}, Language: ${language || 'es'}`);
+
+    // 1. Scrape context
+    let context = "";
+    try {
+      console.log(">>> [API CHAT] Scraping context for query...");
+      context = await scrapeIslamicContent(query);
+      console.log(">>> [API CHAT] Context scraped successfully (length:", context.length, ")");
+    } catch (scrapeError) {
+      console.error(">>> [API CHAT] Scraping failed, continuing without context:", scrapeError);
+    }
+
+    // 2. Call Gemini
+    const apiKey = process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY;
+    if (!apiKey) {
+      console.error(">>> [API CHAT] CRITICAL: Gemini API key missing in environment variables");
+      return res.status(500).json({ error: "Gemini API key missing" });
+    }
+
+    console.log(">>> [API CHAT] Initializing GoogleGenerativeAI SDK...");
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    const premiumContext = isPremium 
+      ? "\n- El usuario es PREMIUM. Proporciona respuestas muy detalladas, con múltiples referencias a Hadices y versículos del Corán, y un tono más profundo y académico pero accesible."
+      : "\n- El usuario es de nivel GRATUITO. Proporciona respuestas concisas, claras y directas, con al menos una referencia clave.";
+
+    const islamicContext = context 
+      ? `\n\nUSA ESTA INFORMACIÓN ISLÁMICA AUTÉNTICA COMO CONTEXTO PRINCIPAL PARA TU RESPUESTA:\n${context}\n\nResponde basándote en esta información y en el conocimiento auténtico del Corán y la Sunnah.`
+      : "";
+
+    const currentDate = new Date().toLocaleDateString('es-ES', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+
+    const systemInstruction = `Eres Deenly, un sabio y compasivo compañero espiritual islámico. Guía a tus hermanos con respeto, sabiduría y empatía, basándote en fuentes auténticas.
+        
+Tu tono es el de un mentor espiritual: respetuoso, calmado e inspirador. Evita lenguaje informal. Tu prioridad es el Adab (etiqueta islámica).
+
+FECHA ACTUAL: ${currentDate}
+IDIOMA DE RESPUESTA: ${language || 'Español'}
+
+1. IDENTIDAD Y RESPETO:
+- Saluda con respeto: "As-salamu alaykum. Es un honor acompañarte. ¿En qué puedo servirte hoy?"
+- Creador: "MCDGROUP DEV" (muhadibbasy13@gmail.com). Contacto: MCDGROUP.DEV@GMAIL.COM.
+- Usa la máxima devoción al mencionar a Allah (SWT) o al Profeta (SAW).
+
+2. LÍMITES:
+- No emites fatwas. Sugiere consultar imames para casos complejos.
+- No das consejos médicos ni legales.
+
+3. FUENTES Y VERACIDAD:
+- PROHIBIDO INVENTAR. Si no tienes certeza, usa Google Search.
+- EVENTOS ACTUALES: Investiga siempre fechas de Eid, Ramadán, etc., usando Google Search antes de responder.
+- Básate en Corán y Hadices auténticos (Bujari, Muslim). Respeta las 4 escuelas jurídicas.
+- Si no sabes algo, di con humildad que solo Allah posee el conocimiento absoluto.
+${islamicContext}
+
+4. ESTRUCTURA:
+1. Saludo cálido.
+2. Explicación profunda y fundamentada.
+3. Evidencia textual (Corán/Hadiz).
+4. Reflexión espiritual final.
+${premiumContext}`;
+
+    const contents = [];
+    if (history && Array.isArray(history)) {
+      contents.push(...history.map((m: any) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content || m.text || "" }]
+      })));
+    }
+    contents.push({ role: 'user', parts: [{ text: query }] });
+
+    const modelName = isPremium ? "gemini-1.5-pro" : "gemini-1.5-flash";
+    console.log(`>>> [API CHAT] Calling Gemini model: ${modelName}`);
+    
+    let model;
+    try {
+      model = genAI.getGenerativeModel({ 
+        model: modelName,
+      });
+    } catch (modelError) {
+      console.error(">>> [API CHAT] Error getting model, trying fallback:", modelError);
+      model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    }
+
+    console.log(">>> [API CHAT] Sending request to Google AI...");
+    let result;
+    try {
+      result = await model.generateContent({
+        contents,
+        systemInstruction: {
+          role: "system",
+          parts: [{ text: systemInstruction }]
+        },
+        generationConfig: {
+          temperature: isPremium ? 0.8 : 0.7,
+        }
+      });
+    } catch (genError: any) {
+      console.error(">>> [API CHAT] generateContent failed:", genError);
+      // If it's a 404, try one last time with a very basic model
+      if (genError.message?.includes('404') || genError.message?.includes('not found')) {
+        console.log(">>> [API CHAT] 404 detected, trying basic gemini-pro fallback...");
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+        result = await fallbackModel.generateContent({
+          contents: contents.map(c => ({ role: c.role, parts: c.parts })),
+          // gemini-pro (v1) doesn't support systemInstruction in the same way in some versions
+          // so we'll just prepend it to the first message if needed, but for now let's try basic
+        });
+      } else {
+        throw genError;
+      }
+    }
+
+    const response = await result.response;
+    const text = response.text() || "No se pudo generar una respuesta.";
+    console.log(">>> [API CHAT] Response received from Google AI successfully");
+    
+    res.json({ text, context: context.substring(0, 200) + "..." });
+  } catch (error: any) {
+    console.error(">>> [API CHAT] CRITICAL ERROR:", error);
+    res.status(500).json({ 
+      error: "Error calling Chat API", 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Compatibility route for Netlify function path
 app.post("/.netlify/functions/chat", async (req, res) => {
   try {
-    const { query } = req.body;
+    console.log("POST /.netlify/functions/chat body:", req.body);
+    const { history } = req.body;
+    const query = req.body.query || req.body.message || req.body.prompt;
+
     if (!query) {
+      console.warn("Chat Netlify request missing query");
       return res.status(400).json({ error: "Query is required" });
     }
 
@@ -388,41 +550,65 @@ app.post("/.netlify/functions/chat", async (req, res) => {
 
     // 2. Call Gemini
     const apiKey = process.env.GEMINI_API_KEY || process.env.DEENLY_API_KEY;
+    console.log("API Key Check (/.netlify/functions/chat):", { 
+      hasKey: !!apiKey, 
+      keyLength: apiKey?.length,
+      source: process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : (process.env.DEENLY_API_KEY ? "DEENLY_API_KEY" : "NONE")
+    });
     if (!apiKey) {
+      console.error("Gemini API key missing in /.netlify/functions/chat");
       return res.status(500).json({ error: "Gemini API key missing" });
     }
 
-    const genAI = new GoogleGenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
     
-    const prompt = `
-      Eres un asistente islámico experto.
-      Contexto extraído de fuentes confiables:
-      ${context}
+    const systemInstruction = `Eres Deenly, un sabio y compasivo compañero espiritual islámico. 
+    USA ESTA INFORMACIÓN ISLÁMICA AUTÉNTICA COMO CONTEXTO PRINCIPAL PARA TU RESPUESTA:
+    ${context}
+    
+    Responde basándote en esta información y en el conocimiento auténtico del Corán y la Sunnah.`;
 
-      Pregunta del usuario: ${query}
+    const contents = [];
+    if (history && Array.isArray(history)) {
+      contents.push(...history.map((m: any) => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content || m.text || "" }]
+      })));
+    }
+    contents.push({ role: 'user', parts: [{ text: query }] });
 
-      Responde de manera precisa, amable y basándote en el contexto proporcionado si es relevante.
-    `;
-
-    const result = await genAI.models.generateContent({
+    const model = genAI.getGenerativeModel({ 
       model: "gemini-1.5-flash",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+      systemInstruction: systemInstruction
     });
 
-    const text = result.text || "No se pudo generar una respuesta.";
+    let result;
+    try {
+      result = await model.generateContent({
+        contents,
+        generationConfig: {
+          temperature: 0.7,
+        }
+      });
+    } catch (genError: any) {
+      console.error("Compatibility route generateContent failed:", genError);
+      if (genError.message?.includes('404') || genError.message?.includes('not found')) {
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+        result = await fallbackModel.generateContent({
+          contents: contents.map(c => ({ role: c.role, parts: c.parts })),
+        });
+      } else {
+        throw genError;
+      }
+    }
 
+    const response = await result.response;
+    const text = response.text() || "No se pudo generar una respuesta.";
     res.json({ text });
   } catch (error: any) {
+    console.error("Error in /.netlify/functions/chat:", error);
     res.status(500).json({ error: error.message });
   }
-});
-
-app.post("/api/chat", async (req, res) => {
-  // We'll keep this as a proxy or just a placeholder if we follow the "AI in frontend" skill.
-  // However, to satisfy the user's request for a backend chat, we can implement it here.
-  // But the skill says NEVER. So I will redirect the user to the frontend implementation
-  // or provide a "context-only" response that the frontend then uses.
-  res.status(400).json({ error: "Please use the frontend geminiService for AI generation to support streaming and platform best practices. Use /api/search for context." });
 });
 
 // Vite / Static Serving
