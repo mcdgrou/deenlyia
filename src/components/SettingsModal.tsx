@@ -9,6 +9,7 @@ import {
 import AyahOfTheDay from './AyahOfTheDay';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { chatService } from '../services/chatService';
+import { safeJson } from '../lib/utils';
 import { Coordinates, CalculationMethod, PrayerTimes, SunnahTimes } from 'adhan';
 import type { Session } from '@supabase/supabase-js';
 
@@ -759,7 +760,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         try {
           // Reverse geocoding to get city name
           const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-          const data = await response.json();
+          if (!response.ok) throw new Error("Network response was not ok");
+          const data = await safeJson(response, null);
+          if (!data || !data.address) throw new Error("Invalid or empty response");
+          
           const city = data.address.city || data.address.town || data.address.village || data.address.state || 'Detected Location';
           const country = data.address.country || '';
           const cityName = `${city}${country ? ', ' + country : ''}`;
@@ -785,7 +789,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsUpdating(true);
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityName)}&limit=1`);
-      const data = await response.json();
+      if (!response.ok) throw new Error("Network response was not ok");
+      const data = await safeJson(response, []);
       if (data && data.length > 0) {
         const { lat, lon, display_name } = data[0];
         const parts = display_name.split(',');
@@ -1412,25 +1417,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     a.href = url;
                     a.download = `deenly_data_${session?.user?.id}.json`;
                     a.click();
-                  }}
-                  darkMode={darkMode}
-                />
-                <SettingItem 
-                  icon={Trash2} 
-                  label={t.clearHistory} 
-                  danger
-                  onClick={async () => {
-                    // Simple state-less confirmation for now using a custom prompt or just toast if not critical
-                    // But since it is critical, we'll use a more professional approach if we had a modal
-                    // For now, let's at least avoid window.confirm if possible, or use a toast to explain
-                    try {
-                      await chatService.clearAllChats();
-                      if (showToast) showToast(language === 'Español' ? "Historial borrado" : "History cleared", 'success');
-                      setTimeout(() => window.location.reload(), 1000);
-                    } catch (e) {
-                      console.error(e);
-                      if (showToast) showToast("Error al borrar el historial", 'error');
-                    }
                   }}
                   darkMode={darkMode}
                 />

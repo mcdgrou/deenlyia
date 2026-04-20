@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getSurah, type QuranAyah } from '../services/quranService';
 import { getSurahDetails } from '../services/geminiService';
 import { favoriteService } from '../services/favoriteService';
+import { safeJson } from '../lib/utils';
 import type { Session } from '@supabase/supabase-js';
 
 interface Surah {
@@ -72,8 +73,8 @@ const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, darkMode, 
     const fetchAllSurahs = async () => {
       try {
         const response = await fetch('https://api.alquran.cloud/v1/surah');
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
+        if (!response.ok) return;
+        const data = await safeJson(response, { code: 500, data: [] });
         if (data.code === 200) {
           setSurahs(data.data);
         }
@@ -224,7 +225,7 @@ const SurahLibrary: React.FC<SurahLibraryProps> = ({ isOpen, onClose, darkMode, 
     try {
       const response = await fetch(`https://api.alquran.cloud/v1/surah/${surahNumber}/${quranReciter}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
+      const data = await safeJson(response, { code: 500, data: { ayahs: [] } });
       
       if (data.code === 200 && data.data.ayahs && sessionId === currentSessionIdRef.current) {
         let ayahsData = [...data.data.ayahs];

@@ -18,16 +18,21 @@ const AyahOfTheDay: React.FC<AyahOfTheDayProps> = ({ darkMode, language, t }) =>
 
   useEffect(() => {
     const fetchAyah = async () => {
-      setLoading(true);
-      const edition = language === 'Español' ? 'es.cortes' : 
-                      language === 'English' ? 'en.sahih' : 
-                      language === 'Français' ? 'fr.hamidullah' : 
-                      language === 'Indonesia' ? 'id.indonesian' :
-                      language === 'Deutsch' ? 'de.aburida' :
-                      'ar.alafasy';
-      const data = await getAyahOfTheDay(edition);
-      setAyah(data);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const edition = language === 'Español' ? 'es.cortes' : 
+                        language === 'English' ? 'en.sahih' : 
+                        language === 'Français' ? 'fr.hamidullah' : 
+                        language === 'Indonesia' ? 'id.indonesian' :
+                        language === 'Deutsch' ? 'de.aburida' :
+                        'ar.alafasy';
+        const data = await getAyahOfTheDay(edition);
+        setAyah(data);
+      } catch (error) {
+        console.error('Error in AyahOfTheDay fetch:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchAyah();
   }, [language]);

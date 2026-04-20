@@ -1,4 +1,6 @@
 
+import { safeJson } from '../lib/utils';
+
 export interface QuranAyah {
   number: number;
   text: string;
@@ -35,8 +37,9 @@ const BASE_URL = 'https://api.alquran.cloud/v1';
 export const searchQuranByKeyword = async (keyword: string, surah: string = 'all', language: string = 'es.cortes'): Promise<QuranAyah[]> => {
   try {
     const response = await fetch(`${BASE_URL}/search/${encodeURIComponent(keyword)}/${surah}/${language}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
+    if (!response.ok) return [];
+    
+    const data = await safeJson(response, { code: 500, data: { matches: [] } });
     if (data.code === 200) {
       return data.data.matches;
     }
@@ -50,9 +53,10 @@ export const searchQuranByKeyword = async (keyword: string, surah: string = 'all
 export const getAyah = async (surah: number, ayah: number, language: string = 'es.cortes'): Promise<any | null> => {
   try {
     const response = await fetch(`${BASE_URL}/ayah/${surah}:${ayah}/editions/quran-uthmani,${language},ar.jalalayn`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (data.code === 200) {
+    if (!response.ok) return null;
+    
+    const data = await safeJson(response, { code: 500, data: null });
+    if (data.code === 200 && data.data) {
       // data.data is an array of editions
       return {
         ...data.data[0],
@@ -72,8 +76,9 @@ export const getAyah = async (surah: number, ayah: number, language: string = 'e
 export const getAllSurahs = async (): Promise<Surah[]> => {
   try {
     const response = await fetch(`${BASE_URL}/surah`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
+    if (!response.ok) return [];
+    
+    const data = await safeJson(response, { code: 500, data: [] });
     if (data.code === 200) {
       return data.data;
     }
@@ -87,9 +92,10 @@ export const getAllSurahs = async (): Promise<Surah[]> => {
 export const getSurah = async (surahNumber: number, language: string = 'es.cortes'): Promise<any> => {
   try {
     const response = await fetch(`${BASE_URL}/surah/${surahNumber}/editions/quran-uthmani,${language}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (data.code === 200) {
+    if (!response.ok) return null;
+    
+    const data = await safeJson(response, { code: 500, data: null });
+    if (data.code === 200 && data.data) {
       const arabicEdition = data.data[0];
       const translationEdition = data.data[1];
       
@@ -123,9 +129,10 @@ export const getAyahOfTheDay = async (language: string = 'es.cortes'): Promise<a
 
     // Fetch Arabic, Translation, and Jalalayn Tafsir
     const response = await fetch(`${BASE_URL}/ayah/${ayahNumber}/editions/quran-uthmani,${language},ar.jalalayn`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-    const data = await response.json();
-    if (data.code === 200) {
+    if (!response.ok) return null;
+    
+    const data = await safeJson(response, { code: 500, data: null });
+    if (data.code === 200 && data.data) {
       return {
         ...data.data[0],
         arabicText: data.data[0].text,

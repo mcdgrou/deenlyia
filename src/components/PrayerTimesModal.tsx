@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Clock, MapPin, Navigation, Loader2, Bell, BellOff, Settings } from 'lucide-react';
 import { Coordinates, CalculationMethod, PrayerTimes, SunnahTimes } from 'adhan';
+import { safeJson } from '../lib/utils';
 
 interface PrayerTimesModalProps {
   isOpen: boolean;
@@ -99,7 +100,9 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({
         const { latitude, longitude } = position.coords;
         try {
           const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-          const data = await response.json();
+          if (!response.ok) throw new Error("Network response was not ok");
+          const data = await safeJson(response, null);
+          if (!data || !data.address) throw new Error("Invalid or empty response");
           const city = data.address.city || data.address.town || data.address.village || data.address.state || 'Ubicación detectada';
           propsSetLocation({ city, lat: latitude, lng: longitude });
           setIsEditingLocation(false);
@@ -126,7 +129,8 @@ const PrayerTimesModal: React.FC<PrayerTimesModalProps> = ({
     setIsUpdating(true);
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
-      const data = await response.json();
+      if (!response.ok) throw new Error("Network response was not ok");
+      const data = await safeJson(response, []);
       if (data && data.length > 0) {
         const { lat, lon, display_name } = data[0];
         const cityName = display_name.split(',')[0];

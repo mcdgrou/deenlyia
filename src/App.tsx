@@ -36,7 +36,8 @@ import { Auth } from './components/Auth';
 import { Onboarding, type OnboardingData } from './components/Onboarding';
 import AyahOfTheDay from './components/AyahOfTheDay';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { getMuftiResponse, getIslamicContext, type ChatMessage as GeminiChatMessage } from './services/geminiService';
+import { getMuftiResponse, type ChatMessage as GeminiChatMessage } from './services/geminiService';
+import { safeJson } from './lib/utils';
 import { ThinkingIndicator } from './components/ThinkingIndicator';
 import { chatService, type Chat, type Message as DbMessage } from './services/chatService';
 import ReactMarkdown from 'react-markdown';
@@ -191,9 +192,6 @@ export default function App() {
     fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true
   });
 
-  const [usageCount, setUsageCount] = useState(0);
-  const [usageLimit, setUsageLimit] = useState(15);
-  const [memories, setMemories] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [achievementsStats, setAchievementsStats] = useState({
     messagesSent: 0,
@@ -223,9 +221,8 @@ export default function App() {
       // Proactively update local state for immediate feedback
       setIsPremium(true);
       
-      // Refresh usage and session to get updated data from server
+      // Refresh session to get updated data
       if (session?.user?.id) {
-        fetchUsage(session.user.id);
         supabase.auth.refreshSession().catch(err => console.error('Error refreshing session:', err));
       }
       
@@ -239,31 +236,6 @@ export default function App() {
       window.history.replaceState({}, document.title, newUrl);
     }
   }, [session?.user?.id, language]);
-
-  const fetchUsage = async (userId: string) => {
-    try {
-      const response = await fetch('/api/usage/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      if (data && data.count !== undefined) {
-        setUsageCount(data.count);
-        setUsageLimit(data.limit);
-        setIsPremium(data.isPremium);
-      }
-    } catch (error) {
-      console.error('Error checking usage:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (session?.user?.id) {
-      fetchUsage(session.user.id);
-    }
-  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -780,9 +752,11 @@ export default function App() {
       rateLimitReached: 'Límite de peticiones alcanzado. Por favor, espera un momento antes de intentar de nuevo.',
       serviceUnavailable: 'El servicio no está disponible en este momento. Por favor, inténtalo más tarde.',
       invalidArgument: 'La solicitud contiene argumentos no válidos o el mensaje es demasiado largo.',
-      permissionDenied: 'No tienes permiso para realizar esta acción o la clave de API está restringida.',
-      internalError: 'Ha ocurrido un error interno en los servidores de la IA. Por favor, inténtalo de nuevo más tarde.',
+      permissionDenied: 'Permiso denegado. Es posible que tu región no sea compatible con la IA de Google o que tu API Key sea inválida. Prueba a usar una VPN conectada a EE.UU. o revisa tu país.',
+      unsupportedRegion: 'Tu ubicación actual no parece compatible con los servicios de IA de Google. Te recomendamos usar una VPN conectada a regiones soportadas (como EE.UU.).',
+      internalError: 'Error interno del servidor de la IA. Por favor, reporta este error a soporte o inténtalo más tarde.',
       quotaExhausted: 'Has agotado tu cuota de uso de la API. Por favor, revisa tu plan o espera a que se restablezca.',
+      unexpectedJsonError: 'Error de formato en la respuesta de la IA. Esto suele ser un error temporal del servidor. Por favor, intenta de nuevo en unos segundos.',
     },
     'English': {
       welcomeBrother: 'As-salamu alaykum! Welcome back, brother. How can I help you today?',
@@ -981,6 +955,7 @@ export default function App() {
       permissionDenied: 'You do not have permission to perform this action or the API key is restricted.',
       internalError: 'An internal error occurred in the AI servers. Please try again later.',
       quotaExhausted: 'You have exhausted your API usage quota. Please check your plan or wait for it to reset.',
+      unexpectedJsonError: 'AI response format error. This is usually a temporary server issue. Please try again in a few seconds.',
     },
     'Français': {
       welcomeBrother: 'As-salamu alaykum ! Bon retour, mon frère. Comment puis-je t\'aider aujourd\'hui ?',
@@ -1098,6 +1073,7 @@ export default function App() {
       permissionDenied: 'Vous n\'avez pas la permission d\'effectuer cette action ou la clé API est restreinte.',
       internalError: 'Une erreur interne s\'est produite sur les serveurs d\'IA. Veuillez réessayer plus tard.',
       quotaExhausted: 'Vous avez épuisé votre quota d\'utilisation de l\'API. Veuillez vérifier votre plan ou attendre qu\'il soit réinitialisé.',
+      unexpectedJsonError: 'Erreur de format de réponse de l\'IA. Il s\'agit généralement d\'un problème de serveur temporaire. Veuillez réessayer dans quelques secondes.',
     },
     'العربية': {
       welcomeBrother: 'السلام عليكم! أهلاً بك من جديد يا أخي. كيف يمكنني مساعدتك اليوم؟',
@@ -1215,6 +1191,7 @@ export default function App() {
       permissionDenied: 'ليس لديك إذن للقيام بهذا الإجراء أو مفتاح API مقيد.',
       internalError: 'حدث خطأ داخلي في خوادم الذكاء الاصطناعي. يرجى المحاولة مرة أخرى لاحقاً.',
       quotaExhausted: 'لقد استنفدت حصة استخدام API الخاصة بك. يرجى التحقق من خطتك أو الانتظار حتى يتم إعادة تعيينها.',
+      unexpectedJsonError: 'خطأ في تنسيق استجابة الذكاء الاصطناعي. هذه عادة مشكلة مؤقتة في الخادم. يرجى المحاولة مرة أخرى بعد بضع ثوانٍ.',
     },
     'Indonesian': {
       welcomeBrother: 'As-salamu alaykum! Selamat datang kembali, saudara. Apa yang bisa saya bantu hari ini?',
@@ -1332,6 +1309,7 @@ export default function App() {
       permissionDenied: 'Anda tidak memiliki izin untuk melakukan tindakan ini atau kunci API dibatasi.',
       internalError: 'Terjadi kesalahan internal di server AI. Silakan coba lagi nanti.',
       quotaExhausted: 'Anda telah menghabiskan kuota penggunaan API Anda. Silakan periksa paket Anda atau tunggu hingga disetel ulang.',
+      unexpectedJsonError: 'Kesalahan format respons AI. Ini biasanya masalah server sementara. Silakan coba lagi dalam beberapa detik.',
     },
     'Deutsch': {
       welcomeBrother: 'As-salamu alaykum! Willkommen zurück, Bruder. Wie kann ich dir heute helfen?',
@@ -1449,6 +1427,7 @@ export default function App() {
       permissionDenied: 'Sie haben keine Berechtigung, diese Aktion auszuführen, oder der API-Schlüssel ist eingeschränkt.',
       internalError: 'Auf den KI-Servern ist ein interner Fehler aufgetreten. Bitte versuchen Sie es später erneut.',
       quotaExhausted: 'Sie haben Ihr API-Nutzungskontingent erschöpft. Bitte überprüfen Sie Ihren Plan oder warten Sie auf die Zurücksetzung.',
+      unexpectedJsonError: 'Formatfehler der KI-Antwort. Dies ist normalerweise ein temporäres Serverproblem. Bitte versuchen Sie es in wenigen Sekunden erneut.',
     }
   };
 
@@ -1782,48 +1761,6 @@ export default function App() {
 
     const activeSessionId = currentSessionId;
     const tempId = Date.now().toString();
-    // Check and increment usage
-    if (!isPremium && session?.user?.id) {
-      // Pre-check local state
-      if (usageCount >= usageLimit) {
-        openModal('plans');
-        showToast(t.usageLimitReached, 'error');
-        return;
-      }
-
-      try {
-        const usageResponse = await fetch('/api/usage/increment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: session.user.id }),
-        });
-        
-        if (usageResponse.status === 403) {
-          openModal('plans');
-          showToast(t.usageLimitReached, 'error');
-          // Update local count if server says it's higher
-          const usageData = await usageResponse.json();
-          if (usageData.count !== undefined) setUsageCount(usageData.count);
-          return;
-        }
-        
-        if (!usageResponse.ok) {
-          throw new Error(`Usage API error: ${usageResponse.status}`);
-        }
-
-        const usageData = await usageResponse.json();
-        if (usageData.count !== undefined) {
-          setUsageCount(usageData.count);
-          const remaining = usageLimit - usageData.count;
-          if (remaining > 0 && remaining <= 3) {
-            showToast(t.questionsLeftWarning.replace('{{count}}', remaining.toString()), 'success');
-          }
-        }
-      } catch (error) {
-        console.error('Error incrementing usage:', error);
-        // We don't block the chat if usage increment fails due to network
-      }
-    }
 
     const userMessage: Message = {
       id: tempId,
@@ -1896,10 +1833,6 @@ export default function App() {
       
       console.log('Calling getMuftiResponse with input:', input, 'isPremium:', isPremium, 'language:', language);
       
-      // Fetch Islamic context from backend scraping
-      const islamicContext = await getIslamicContext(input);
-      console.log('Islamic context fetched, length:', islamicContext.length);
-      
       const streamingId = (Date.now() + 2).toString();
       let accumulatedText = "";
 
@@ -1923,8 +1856,7 @@ export default function App() {
               return [...prev, { id: streamingId, role: 'assistant', text: accumulatedText, timestamp: new Date() }];
             }
           });
-        },
-        islamicContext
+        }
       );
       
       if (!response || response.trim() === "") {
@@ -1960,13 +1892,15 @@ export default function App() {
       ));
     } catch (error: any) {
       clearInterval(progressInterval);
-      console.error('Error:', error);
+      console.error('Chat API Error:', error);
       
       let displayError = error.message || t.error;
       const lowerError = displayError.toLowerCase();
       
       // Map common error strings to localized messages
-      if (lowerError.includes('api key not valid') || lowerError.includes('invalid api key')) {
+      if (lowerError.includes('unexpected end of json') || lowerError.includes('failed to execute \'json\'')) {
+        displayError = t.unexpectedJsonError || t.serviceUnavailable || "Error de formato en la respuesta de la IA. Por favor, intenta de nuevo.";
+      } else if (lowerError.includes('api key not valid') || lowerError.includes('invalid api key')) {
         displayError = t.invalidApiKey || displayError;
       } else if (lowerError.includes('rate limit') || lowerError.includes('429')) {
         displayError = t.rateLimitReached || displayError;
@@ -1976,10 +1910,12 @@ export default function App() {
         displayError = t.serviceUnavailable || displayError;
       } else if (lowerError.includes('invalid argument') || lowerError.includes('400')) {
         displayError = t.invalidArgument || displayError;
-      } else if (lowerError.includes('permission denied') || lowerError.includes('403')) {
+      } else if (lowerError.includes('permission denied') || lowerError.includes('403') || lowerError.includes('forbidden')) {
         displayError = t.permissionDenied || displayError;
       } else if (lowerError.includes('internal error') || lowerError.includes('500')) {
         displayError = t.internalError || displayError;
+      } else if (lowerError.includes('unsupported region')) {
+        displayError = t.unsupportedRegion || displayError;
       } else if (displayError.includes('{') && displayError.includes('}')) {
         // Try to parse JSON error if it looks like one
         try {
@@ -2078,13 +2014,7 @@ export default function App() {
 
       console.log('Response status:', response.status);
       
-      let data;
-      try {
-        data = await response.json();
-      } catch (e) {
-        console.error('Failed to parse response as JSON:', e);
-        throw new Error(`Server returned non-JSON response (Status: ${response.status})`);
-      }
+      const data = await safeJson(response, { error: 'Invalid response', url: undefined } as any);
 
       if (!response.ok) {
         console.error('Server error data:', data);
@@ -2129,7 +2059,8 @@ export default function App() {
         body: JSON.stringify({ customerId }),
       });
 
-      const data = await response.json();
+      const data = await safeJson(response, { url: undefined, error: undefined } as any);
+
       if (!response.ok) {
         throw new Error(data.error || 'Server error');
       }
@@ -2138,7 +2069,7 @@ export default function App() {
         window.open(data.url, '_blank');
       }
     } catch (error: any) {
-      console.error('Error:', error);
+      console.error('Error in portal session:', error);
       showToast(error.message || (language === 'Español' ? 'Error al abrir el portal de gestión.' : 'Error opening management portal.'), 'error');
     }
   };
@@ -2283,12 +2214,6 @@ export default function App() {
                           <Edit2 size={12} />
                         </button>
                       )}
-                      <button 
-                        onClick={() => deleteMessage(message.id)}
-                        className={`p-1 rounded-md hover:bg-deenly-gold/10 ${message.role === 'user' ? 'text-white/60 hover:text-white' : 'text-deenly-gold/60 hover:text-deenly-gold'}`}
-                      >
-                        <Trash2 size={12} />
-                      </button>
                     </div>
                     <div className="text-[8px] opacity-40 uppercase tracking-tighter">
                         {new Date(message.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -2331,39 +2256,15 @@ export default function App() {
         <div className={`p-4 pb-6 sm:pb-8 ${darkMode ? 'bg-deenly-dark-bg' : 'bg-deenly-cream'} border-t border-deenly-gold/5`}>
           <div className="max-w-3xl mx-auto mb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 px-2">
             {!isPremium ? (
-              (usageLimit - usageCount <= 3) && (
-                <div className="flex flex-wrap items-center gap-3 w-full justify-between">
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all ${
-                    usageLimit - usageCount <= 3 
-                      ? 'bg-red-500/10 border-red-500/30' 
-                      : 'bg-deenly-gold/10 border-deenly-gold/20'
-                  }`}>
-                    <div className={`w-1.5 h-1.5 rounded-full ${
-                      usageCount >= usageLimit 
-                        ? 'bg-red-500' 
-                        : 'bg-orange-500 animate-pulse'
-                    }`}></div>
-                    <span className={`text-[9px] font-bold uppercase tracking-widest ${
-                      usageLimit - usageCount <= 3 ? 'text-red-500' : 'text-deenly-gold'
-                    }`}>
-                      {language === 'Español' 
-                        ? `${Math.max(0, usageLimit - usageCount)} preguntas cada 12h` 
-                        : `${Math.max(0, usageLimit - usageCount)} questions every 12h`}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => openModal('plans')}
-                    className={`text-[9px] font-bold uppercase tracking-widest hover:underline transition-all flex items-center gap-1.5 px-3 py-1 rounded-full border ${
-                      usageLimit - usageCount <= 3 
-                        ? 'bg-red-500 text-white border-red-500' 
-                        : 'bg-deenly-gold/10 text-deenly-gold border-deenly-gold/20'
-                    }`}
-                  >
-                    <Zap size={10} className="fill-current" />
-                    {language === 'Español' ? 'Mejorar a Premium' : 'Upgrade to Premium'}
-                  </button>
-                </div>
-              )
+              <div className="flex flex-wrap items-center gap-4 w-full justify-center">
+                <button 
+                  onClick={() => openModal('plans')}
+                  className="bg-deenly-gold/10 hover:bg-deenly-gold/20 text-deenly-gold text-[10px] font-bold uppercase tracking-widest transition-all flex items-center gap-2 px-4 py-2 rounded-full border border-deenly-gold/30 group"
+                >
+                  <Zap size={12} className="fill-current group-hover:scale-110 transition-transform" />
+                  {language === 'Español' ? 'Explorar Plan Premium' : 'Explore Premium Plan'}
+                </button>
+              </div>
             ) : (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-deenly-gold rounded-full shadow-md">
                 <Zap size={10} className="text-white fill-white" />
@@ -2407,13 +2308,6 @@ export default function App() {
             </button>
           </div>
           <p className="text-center text-[7px] sm:text-[8px] mt-3 opacity-30 uppercase tracking-[0.2em] font-medium">
-            {!isPremium && (usageLimit - usageCount <= 3) && (
-              <span className="block mb-1">
-                {language === 'Español' 
-                  ? 'Plan Gratuito: 15 preguntas cada 12h' 
-                  : 'Free Plan: 15 questions every 12h'}
-              </span>
-            )}
             {t.disclaimer}
           </p>
         </div>
@@ -2462,12 +2356,6 @@ export default function App() {
                       <MessageSquare size={16} className="shrink-0" />
                       <span className="text-xs font-medium truncate">{s.title}</span>
                     </div>
-                    <button 
-                      onClick={(e) => deleteChat(e, s.id)}
-                      className="opacity-0 group-hover:opacity-50 hover:!opacity-100 p-1 hover:bg-deenly-gold/10 rounded-md transition-colors"
-                    >
-                      <X size={14} />
-                    </button>
                   </div>
                 ))}
                 {sessions.length === 0 && (
@@ -2578,17 +2466,6 @@ export default function App() {
                       </p>
                     </div>
                   )}
-
-                  <button 
-                    onClick={() => {
-                      clearAllChats();
-                      setIsSidebarOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-colors text-red-500 hover:bg-red-500/10`}
-                  >
-                    <Trash2 size={18} />
-                    <span className="text-sm font-medium">{t.clearHistory}</span>
-                  </button>
                 </div>
 
                 <div className="pt-6">
